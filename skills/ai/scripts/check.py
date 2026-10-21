@@ -1,4 +1,4 @@
-"""Check a trend brief HTML: watermark-free and every paper has the required parts.
+"""Check a trend brief HTML: watermark-free, prose paragraphs, and every paper has the required parts.
 
   python check.py BRIEF.html
 Exit 1 and list problems if anything fails.
@@ -36,6 +36,12 @@ def check(html):
             bad.append(f"paper {i}: no mermaid diagram")
         if "<table" not in sec:
             bad.append(f"paper {i}: no before/after table")
+        if re.search(r"<[uo]l[\s>]", sec):
+            bad.append(f"paper {i}: bullet list, write prose paragraphs")
+        paras = [re.sub(r"<[^>]+>", "", x) for x in re.findall(r"<p>(.*?)</p>", sec, flags=re.S)]
+        short = [x for x in paras if len(x.strip()) < 80]
+        if paras and len(short) > len(paras) / 3:
+            bad.append(f"paper {i}: {len(short)}/{len(paras)} paragraphs under 80 chars, join them into prose")
     return bad
 
 

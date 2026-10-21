@@ -1,6 +1,6 @@
 {
   "name": "phro-trend",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "description": "Turn trending research papers into practical Korean briefs: what was done before, what broke, what the paper changes, and where it fits in your stack.",
   "author": {
