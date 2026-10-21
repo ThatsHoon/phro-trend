@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>트렌드 논문 YYYY-MM-DD</title>
+<style>
+:root { --bg:#fff; --fg:#1d1d1f; --muted:#6b6b70; --line:#e3e3e8; --card:#f6f6f8; --accent:#2f6fde; --old:#b5452f; --new:#1f8a4c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#16171a; --fg:#ececf0; --muted:#9a9aa3; --line:#2c2d33; --card:#1f2024; --accent:#7aa7ff; --old:#ff8a73; --new:#5fd08f; } }
+:root[data-theme="dark"] { --bg:#16171a; --fg:#ececf0; --muted:#9a9aa3; --line:#2c2d33; --card:#1f2024; --accent:#7aa7ff; --old:#ff8a73; --new:#5fd08f; }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.7 "Pretendard","Malgun Gothic",system-ui,sans-serif; }
+main { max-width:920px; margin:0 auto; padding:32px 16px 80px; }
+h1 { font-size:1.7rem; margin:0 0 4px; } h2 { font-size:1.35rem; margin:56px 0 4px; border-top:2px solid var(--line); padding-top:28px; }
+h3 { font-size:1.05rem; margin:28px 0 6px; color:var(--accent); }
+.meta, .muted { color:var(--muted); font-size:.9rem; }
+.oneline { background:var(--card); border-left:4px solid var(--accent); padding:12px 16px; border-radius:6px; font-weight:600; }
+table { width:100%; border-collapse:collapse; margin:10px 0; font-size:.95rem; }
+th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+th { background:var(--card); }
+td.old { color:var(--old); } td.new { color:var(--new); }
+.mermaid { background:var(--card); border-radius:8px; padding:12px; margin:10px 0; overflow-x:auto; }
+pre { background:var(--card); padding:12px; border-radius:6px; overflow-x:auto; font-size:.88rem; }
+.wrap { overflow-x:auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>트렌드 논문 3편: 실무에 어떻게 쓰나</h1>
+<p class="meta">Hugging Face 트렌딩 기준 YYYY-MM-DD</p>
+
+<!-- 1. 한눈에: 세 편 비교표 (논문 / 한 줄로 / 바뀌는 곳 / 바로 쓸 수 있나) -->
+<div class="wrap"><table>
+<tr><th>논문</th><th>한 줄로</th><th>바뀌는 곳</th><th>바로 쓸 수 있나</th></tr>
+</table></div>
+
+<!-- 2. 논문마다 아래 section 하나. h3 제목 여덟 개는 이 이름 그대로 둔다. -->
+<section class="paper" data-id="ARXIV_ID">
+<h2>1. 논문 제목</h2>
+<p class="meta">arXiv ARXIV_ID · 공개일 · 추천 수 · <a href="https://huggingface.co/papers/ARXIV_ID">논문 페이지</a></p>
+<h3>한 줄로</h3>
+<p class="oneline"></p>
+<h3>기존에는</h3>
+<h3>무엇이 문제였나</h3>
+<h3>이 논문은 이렇게 바꿨다</h3>
+<div class="wrap"><table>
+<tr><th>항목</th><th>기존</th><th>이 논문</th></tr>
+</table></div>
+<h3>얼마나 좋아졌나</h3>
+<h3>어디에 쓰면 좋나</h3>
+<pre class="mermaid">
+flowchart LR
+</pre>
+<h3>예시</h3>
+<h3>바로 써보려면</h3>
+</section>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({ startOnLoad: true, theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default" });
+</script>
+</body>
+</html>
