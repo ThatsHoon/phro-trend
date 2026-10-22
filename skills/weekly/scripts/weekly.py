@@ -694,6 +694,73 @@ def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, t
     return 0 if any(st["ok"] for st in status.values()) else 1
 
 
+READ_LIMIT = 200_000
+REDDIT_THREAD = re.compile(r"reddit\.com/r/[^/]+/comments/([a-z0-9]+)", re.I)
+
+
+def _slug(url: str) -> str:
+    u = urllib.parse.urlsplit(url)
+    raw = _host(url) + u.path + (f"?{u.query}" if u.query else "")
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", raw.lower())).strip("-")[:60]
+
+
+def _pulled_rows(home: Path) -> dict[str, dict]:
+    rows = {}
+    for path in sorted((Path(home) / "pull").glob("*.jsonl")):
+        if path.name != "log.jsonl":
+            for r in _read_jsonl(path):
+                if r.get("link"):
+                    rows[norm_url(r["link"])] = r
+    return rows
+
+
+def _reddit_text(get, post_id: str) -> str:
+    base = "https://arctic-shift.photon-reddit.com/api"
+    posts = json.loads(get(f"{base}/posts/ids?ids={post_id}")).get("data") or [{}]
+    tree = json.loads(get(f"{base}/comments/tree?link_id={post_id}&limit=100")).get("data") or []
+    top = sorted((c["data"] for c in tree if c.get("kind") == "t1"), key=lambda c: -(c.get("score") or 0))[:20]
+    comments = "\n\n".join(f"[{c.get('score')}] {(c.get('body') or '')[:1500]}" for c in top)
+    return f"{posts[0].get('title') or ''}\n\n{posts[0].get('selftext') or ''}\n\n{comments}"
+
+
+def read(urls: list[str], out: Path, get, home: Path = HOME) -> list[Path]:
+    """Save the originals of chosen stories as text. Reddit and GeekNews pages are never requested."""
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    pulled = _pulled_rows(home)
+    written = []
+    for url in urls:
+        try:
+            row = pulled.get(norm_url(url))
+            thread = REDDIT_THREAD.search(url)
+            repo = github_repo(url)
+            path_parts = [x for x in urllib.parse.urlsplit(url).path.split("/") if x]
+            if row:
+                name, text = f"pulled-{_slug(url)}.txt", f"{row.get('title') or ''}\n\n{row.get('content') or ''}"
+            elif _host(url) == "news.hada.io":
+                print(f"skip {url}: GeekNews 페이지는 받지 않음")
+                continue
+            elif arxiv_id(url):
+                aid = arxiv_id(url)
+                name, text = f"{aid}.md", get(f"https://huggingface.co/papers/{aid}.md").decode("utf-8", "replace")
+            elif thread:
+                name, text = f"reddit-{thread.group(1)}.txt", _reddit_text(get, thread.group(1))
+            elif repo and len(path_parts) == 2:
+                owner, name_ = repo.split("/")
+                body = get(f"https://api.github.com/repos/{owner}/{name_}/readme", {"Accept": "application/vnd.github.raw"})
+                name, text = f"gh-{owner}-{name_}.md", body.decode("utf-8", "replace")
+            else:
+                name, text = f"{_slug(url)}.txt", html_text(get(url).decode("utf-8", "replace"))
+        except (FetchError, ValueError) as e:
+            print(f"skip {url}: {e}")
+            continue
+        path = out / name
+        path.write_text(f"source: {url}\n\n{text}"[:READ_LIMIT], encoding="utf-8")
+        written.append(path)
+        print(path)
+    return written
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="weekly.py", description="phro-trend weekly AI news collector")
     ap.add_argument("--home", default=str(HOME), help="record folder (default ~/.claude/phro-trend)")
@@ -703,10 +770,16 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--out", required=True)
     sub.add_parser("pull")
     sub.add_parser("schedule")
+    r = sub.add_parser("read")
+    r.add_argument("urls", nargs="+")
+    r.add_argument("--out", required=True)
     args = ap.parse_args(argv)
     home = Path(args.home)
     if args.cmd == "collect":
         return collect(args.week, Path(args.out), home=home)
+    if args.cmd == "read":
+        read(args.urls, Path(args.out), Fetcher().get, home)
+        return 0
     if args.cmd == "pull":
         result = pull(home, Fetcher().get, datetime.now().astimezone())
         print(result)
