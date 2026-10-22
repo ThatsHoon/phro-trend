@@ -761,6 +761,36 @@ def read(urls: list[str], out: Path, get, home: Path = HOME) -> list[Path]:
     return written
 
 
+def _marked(attrs: str, body: str, kind: str, title_pattern: str) -> dict:
+    a = dict(re.findall(r'(data-[a-z]+)="([^"]*)"', attrs))
+    title = re.search(title_pattern, body, flags=re.S)
+    link = re.search(r'href="(https?://[^"]+)"', body)
+    return {"id": a.get("data-id", ""), "title": _plain(title.group(1)) if title else "",
+            "url": htmllib.unescape(link.group(1)) if link else "", "stage": a.get("data-stage", ""),
+            "label": a.get("data-label", ""), "kind": kind}
+
+
+def mark(html_path: Path, record: Path) -> int:
+    """Record the stories of a brief that passed check.py, so later weeks skip them and the flow paragraph can compare."""
+    html = Path(html_path).read_text(encoding="utf-8")
+    week = re.search(r'<meta\s+name="phro-week"\s+content="(\d{4}-W\d{2})"', html)
+    if not week:
+        raise ValueError(f"no <meta name=\"phro-week\"> in {html_path}")
+    stories = [_marked(a, b, "top", r"<h3[^>]*>(.*?)</h3>")
+               for a, b in re.findall(r'<article class="story"([^>]*)>(.*?)</article>', html, flags=re.S)]
+    stories += [_marked(a, b, "brief", r"<strong>(.*?)</strong>")
+                for a, b in re.findall(r'<p class="item"([^>]*)>(.*?)</p>', html, flags=re.S)]
+    record = Path(record)
+    data = _load_json(record)
+    data[week.group(1)] = {"file": str(Path(html_path).resolve()), "marked_at": datetime.now().astimezone().isoformat(),
+                           "stories": stories}
+    record.parent.mkdir(parents=True, exist_ok=True)
+    tmp = record.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(record)
+    return len(stories)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="weekly.py", description="phro-trend weekly AI news collector")
     ap.add_argument("--home", default=str(HOME), help="record folder (default ~/.claude/phro-trend)")
@@ -773,12 +803,18 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("read")
     r.add_argument("urls", nargs="+")
     r.add_argument("--out", required=True)
+    m = sub.add_parser("mark")
+    m.add_argument("file")
     args = ap.parse_args(argv)
     home = Path(args.home)
     if args.cmd == "collect":
         return collect(args.week, Path(args.out), home=home)
     if args.cmd == "read":
         read(args.urls, Path(args.out), Fetcher().get, home)
+        return 0
+    if args.cmd == "mark":
+        n = mark(Path(args.file), home / "weekly.json")
+        print(f"marked {n} stories -> {home / 'weekly.json'}")
         return 0
     if args.cmd == "pull":
         result = pull(home, Fetcher().get, datetime.now().astimezone())
