@@ -14,6 +14,7 @@ from __future__ import annotations
 import email.utils
 import html as htmllib
 import json
+import os
 import re
 import time
 import urllib.error
@@ -427,3 +428,122 @@ def src_pulled(home: Path, key: str, name: str, start: datetime, end: datetime) 
             out.append(_item(key, e.get("title") or "", e.get("link") or "", when,
                              head=e.get("content") or "", links=e.get("links") or []))
     return out
+
+
+PULL_FEEDS = {"geeknews": "https://news.hada.io/rss/news", "arxiv-eess-AS": "https://rss.arxiv.org/rss/eess.AS"}
+RETENTION_DAYS = 120
+LOOKBACK = timedelta(hours=30)  # GeekNews RSS holds about 30 hours, arXiv RSS one announcement day
+
+
+def _read_jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rows.append(json.loads(line))
+        except ValueError:  # partial line from an interrupted run
+            continue
+    return rows
+
+
+def _write_jsonl(path: Path, rows: list[dict]) -> None:
+    tmp = path.with_suffix(".tmp")  # write then swap, so a crash mid-write never truncates the record
+    tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    tmp.replace(path)
+
+
+def pull(home: Path, get, now: datetime) -> dict[str, int]:
+    """Append entries not seen before for each short-lived feed; -1 marks a feed that failed this run."""
+    folder = Path(home) / "pull"
+    folder.mkdir(parents=True, exist_ok=True)
+    cutoff = now - timedelta(days=RETENTION_DAYS)
+    log_path = folder / "log.jsonl"
+    log = [r for r in _read_jsonl(log_path) if (parse_date(r.get("at")) or now) >= cutoff]
+    result = {}
+    for name, url in PULL_FEEDS.items():
+        path = folder / f"{name}.jsonl"
+        rows = [r for r in _read_jsonl(path)
+                if (parse_date(r.get("date")) or parse_date(r.get("fetched_at")) or now) >= cutoff]
+        try:
+            entries = feed_entries(get(url))
+        except (FetchError, ValueError) as e:
+            log.append({"at": now.isoformat(), "feed": name, "ok": False, "error": str(e)})
+            result[name] = -1
+            _write_jsonl(path, rows)
+            continue
+        known = {r.get("link") for r in rows}
+        new = []
+        for e in entries:
+            if not e["link"] or e["link"] in known:
+                continue
+            known.add(e["link"])
+            text = html_text(e["html"])
+            new.append({"title": clean_title(e["title"]), "link": e["link"],
+                        "date": e["date"].isoformat() if e["date"] else None, "content": text[:5000],
+                        "links": _unique(hrefs(e["html"]) + urls_in(text)),
+                        "announce_type": e["extra"]["announce_type"], "fetched_at": now.isoformat()})
+        _write_jsonl(path, rows + new)
+        log.append({"at": now.isoformat(), "feed": name, "ok": True, "new": len(new)})
+        result[name] = len(new)
+    _write_jsonl(log_path, log)
+    return result
+
+
+def pull_times(home: Path, name: str) -> list[datetime]:
+    rows = _read_jsonl(Path(home) / "pull" / "log.jsonl")
+    return [d for d in (parse_date(r.get("at")) for r in rows if r.get("feed") == name and r.get("ok")) if d]
+
+
+def gaps(times, start: datetime, end: datetime, lookback: timedelta = LOOKBACK) -> list[tuple[datetime, datetime]]:
+    """Parts of [start, end) no pull covered; a pull at t is taken to hold what appeared in [t - lookback, t]."""
+    out, cur = [], start
+    for lo, hi in sorted((t - lookback, t) for t in times):
+        if hi <= cur:
+            continue
+        if lo > cur:
+            out.append((cur, min(lo, end)))
+        cur = hi
+        if cur >= end:
+            break
+    if cur < end:
+        out.append((cur, end))
+    return [(a, b) for a, b in out if a < b]
+
+
+LAUNCHER = '''"""Run the newest installed phro-trend weekly.py pull (written by weekly.py schedule)."""
+import pathlib, subprocess, sys
+
+CACHE = pathlib.Path.home() / ".claude" / "plugins" / "cache" / "phro" / "phro-trend"
+FALLBACK = pathlib.Path(r"{plugin_root}")
+
+
+def version(p):
+    try:
+        return tuple(int(x) for x in p.name.split("."))
+    except ValueError:
+        return (-1,)
+
+
+roots = [p for p in CACHE.iterdir() if p.is_dir()] if CACHE.is_dir() else []
+root = max(roots, key=version) if roots else FALLBACK
+sys.exit(subprocess.call([sys.executable, "-I", str(root / "skills" / "weekly" / "scripts" / "weekly.py"), "pull"]))
+'''
+
+
+def schedule(home: Path, python_exe: str, plugin_root: Path, platform: str = os.name) -> str:
+    """Write the launcher and return the command that registers it. Registering is left to the user's OK."""
+    home = Path(home)
+    home.mkdir(parents=True, exist_ok=True)
+    launcher = home / "pull_launcher.py"
+    launcher.write_text(LAUNCHER.replace("{plugin_root}", Path(plugin_root).as_posix()), encoding="utf-8")
+    if platform == "nt":
+        pyw = Path(python_exe).with_name("pythonw.exe")  # no console window flashing twice a day
+        exe = pyw if pyw.exists() else Path(python_exe)
+        return "\n".join([
+            f"$a = New-ScheduledTaskAction -Execute '{exe}' -Argument '-I \"{launcher}\"'",
+            "$t = @((New-ScheduledTaskTrigger -Daily -At 09:00), (New-ScheduledTaskTrigger -Daily -At 21:00))",
+            "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10)",
+            "Register-ScheduledTask -TaskName 'phro-trend pull' -Action $a -Trigger $t -Settings $s -Force",
+        ])
+    return f"(crontab -l 2>/dev/null; echo \"0 9,21 * * * '{python_exe}' -I '{launcher}'\") | crontab -"
