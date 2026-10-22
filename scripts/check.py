@@ -1,6 +1,7 @@
-"""Check a trend brief HTML: watermark-free, prose paragraphs, and every paper has the required parts.
+"""Check a phro-trend result HTML: watermark-free, prose paragraphs, and the parts its kind requires.
 
-  python check.py BRIEF.html
+  python check.py RESULT.html
+The kind comes from <meta name="phro-kind" content="ai|weekly">; pages without it are ai briefs.
 Exit 1 and list problems if anything fails.
 """
 import re, sys
@@ -14,7 +15,18 @@ BANNED = ["Generated with", "Co-Authored-By", "Written by Claude", "Claudeê°€ ìž
 EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]")
 
 
+def kind_of(html):
+    m = re.search(r'<meta\s+name="phro-kind"\s+content="([a-z]+)"', html)
+    return m.group(1) if m else "ai"
+
+
 def check(html):
+    if kind_of(html) == "ai":
+        return check_ai(html)
+    return ["weekly: structure check not implemented"]
+
+
+def check_ai(html):
     bad = []
     text = re.sub(r"<script.*?</script>", "", html, flags=re.S)
     for ch, name in (("\u2014", "em dash"), ("\u2013", "en dash")):

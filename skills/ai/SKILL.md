@@ -30,7 +30,7 @@ description: Hugging Face 트렌딩 논문 중 아직 다루지 않은 3편을 �
 
 4. **검사.**
    ```bash
-   python -I ${CLAUDE_PLUGIN_ROOT}/skills/ai/scripts/check.py <파일>
+   python -I ${CLAUDE_PLUGIN_ROOT}/scripts/check.py <파일>
    ```
    `ok`가 나올 때까지 고친다. 워터마크, 대시, 이모지, 필수 칸, 다이어그램, 비교표를 본다.
 
