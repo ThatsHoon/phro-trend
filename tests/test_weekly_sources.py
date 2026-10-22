@@ -79,6 +79,18 @@ class SourcesTest(unittest.TestCase):
         self.assertEqual(items[0]["url"], "https://www.reddit.com/r/LocalLLaMA/comments/a0/t/")
         self.assertFalse(any(c.startswith(("https://www.reddit.com", "https://reddit.com")) for c in get.calls))
 
+    def test_src_github_uses_published_at(self):
+        # releases.atom only carries <updated>, which moves when an old release is edited
+        releases = [{"tag_name": "v3", "name": "In week", "html_url": "https://github.com/o/r/releases/tag/v3",
+                     "published_at": "2026-10-15T18:50:00Z", "body": "see https://huggingface.co/x/y", "draft": False},
+                    {"tag_name": "v2", "name": "Edited later", "html_url": "https://github.com/o/r/releases/tag/v2",
+                     "published_at": "2026-10-08T15:43:00Z", "body": "", "draft": False}]
+        get = FakeGet({"https://api.github.com/repos/o/r/releases?per_page=30": json.dumps(releases).encode()})
+        items = w.src_github(get, "unsloth", "o/r", START, END)
+        self.assertEqual([(x["title"], x["url"]) for x in items], [("In week", "https://github.com/o/r/releases/tag/v3")])
+        self.assertIn("https://huggingface.co/x/y", items[0]["links"])
+        self.assertEqual(next(s for s in w.SOURCES if s[0] == "unsloth")[3:], ("github", "unslothai/unsloth"))
+
     def test_src_discourse_stops_at_window_start(self):
         base = "https://discuss.pytorch.kr"
         get = FakeGet({base + "/latest.json?order=created&page=0": json.dumps({"topic_list": {"topics": [topic(1, 20), topic(2, 18)]}}).encode(),

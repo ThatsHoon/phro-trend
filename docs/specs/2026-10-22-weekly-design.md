@@ -73,7 +73,7 @@
 | HF 블로그 | 발견, 해설 | RSS `huggingface.co/blog/feed.xml` | 정확 |
 | Ahead of AI, DAIR.AI, Deep Focus | 해설 | Substack RSS (`/feed`) | 정확 |
 | Lilian Weng | 해설 | RSS `lilianweng.github.io/index.xml` | 정확 |
-| Unsloth | 실전 | GitHub 릴리스 Atom | 정확 |
+| Unsloth | 실전 | GitHub 릴리스 API(`published_at`, Atom은 수정 시각만 있어 쓰지 않음) | 정확 |
 | r/LocalLLaMA, r/MachineLearning | 실전, 반론 | arctic-shift 보관소 `/api/posts/search`(서브레딧, after, before). 상위 글 댓글도 같은 보관소에서 받는다. | 정확, 점수는 2차 수집 값 |
 | PyTorchKR | 국내 | Discourse `latest.json?order=created&page=N`을 날짜로 거름 | 정확 |
 | GeekNews | 국내, 발견 | RSS `news.hada.io/rss/news`를 하루 두 번 받아 쌓음 | 쌓은 만큼 |

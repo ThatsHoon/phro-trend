@@ -345,7 +345,7 @@ SOURCES = [  # (key, label, role, kind, arg); this order also picks the lead sou
     ("dair", "DAIR.AI", "해설", "feed", "https://nlp.elvissaravia.com/feed"),
     ("deep_focus", "Deep (Learning) Focus", "해설", "feed", "https://cameronrwolfe.substack.com/feed"),
     ("lilian_weng", "Lilian Weng", "해설", "feed", "https://lilianweng.github.io/index.xml"),
-    ("unsloth", "Unsloth 릴리스", "실전", "feed", "https://github.com/unslothai/unsloth/releases.atom"),
+    ("unsloth", "Unsloth 릴리스", "실전", "github", "unslothai/unsloth"),
     ("r_localllama", "r/LocalLLaMA", "실전", "reddit", "LocalLLaMA"),
     ("r_machinelearning", "r/MachineLearning", "실전", "reddit", "MachineLearning"),
     ("pytorchkr", "PyTorchKR", "국내", "discourse", "https://discuss.pytorch.kr"),
@@ -388,6 +388,19 @@ def src_feed(get, key: str, url: str, start: datetime, end: datetime) -> tuple[l
             text = html_text(e["html"])
             items.append(_item(key, e["title"], e["link"], e["date"], head=text, links=hrefs(e["html"]) + urls_in(text)))
     return items, undated
+
+
+def src_github(get, key: str, repo: str, start: datetime, end: datetime) -> list[dict]:
+    """Releases by their published_at. releases.atom only carries <updated>, which moves when an old release
+    is edited, so a week of edits would pass for a week of releases."""
+    items = []
+    for r in json.loads(get(f"https://api.github.com/repos/{repo}/releases?per_page=30")):  # ponytail: 30 per week
+        when = parse_date(r.get("published_at"))
+        if when and start <= when < end and not r.get("draft"):
+            body = r.get("body") or ""
+            items.append(_item(key, r.get("name") or r.get("tag_name") or "", r.get("html_url") or "", when,
+                               head=body, links=urls_in(body)))
+    return items
 
 
 def _is_reddit(url: str) -> bool:
@@ -715,6 +728,8 @@ def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, t
                 got = src_hf(get, week)
             elif kind == "feed":
                 got, st["undated"] = src_feed(get, key, arg, start, end)
+            elif kind == "github":
+                got = src_github(get, key, arg, start, end)
             elif kind == "reddit":
                 got = src_reddit(get, key, arg, start, end)
             elif kind == "discourse":

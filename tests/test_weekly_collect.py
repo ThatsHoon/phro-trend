@@ -38,7 +38,7 @@ def make_get(fail=(), reddit_pages=None):
                                                  "&lt;a href=&quot;https://arxiv.org/abs/2610.14224&quot;&gt;p&lt;/a&gt;"),
         "https://cameronrwolfe.substack.com/feed": EMPTY_RSS,
         "https://lilianweng.github.io/index.xml": EMPTY_RSS,
-        "https://github.com/unslothai/unsloth/releases.atom": b'<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>',
+        "https://api.github.com/repos/unslothai/unsloth/releases?per_page=30": b"[]",
         "https://discuss.pytorch.kr/latest.json?order=created&page=0": json.dumps({"topic_list": {"topics": [
             {"id": 7, "slug": "kr", "title": "KR news", "created_at": "2026-10-14T03:00:00.000Z", "like_count": 3, "posts_count": 2}]}}).encode(),
         "https://discuss.pytorch.kr/latest.json?order=created&page=1": json.dumps({"topic_list": {"topics": []}}).encode(),
