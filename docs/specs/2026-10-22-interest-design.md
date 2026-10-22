@@ -120,7 +120,7 @@ After merging, `collect` keeps a story when any of these holds:
 - its score is in the top quarter of its source this week, or its source has fewer than 20 scored stories;
 - its title or head contains an interest keyword, ignoring case.
 
-Interest keywords come from `--keywords` (interests given in the call) or else from `interests.json` for `--project P`. Dropped stories leave `items.json` and the appendix; `status.json` keeps a per-source `dropped` count and the listing shows it. When keywords exist the listing gains a section of up to 30 interest matches, so low-score but relevant work stays in view. In W42 the top quarter meant 39 upvotes or more on HF (89 of 355) and a score of 53 or more on r/LocalLLaMA; DuplexJev (1 upvote) and Speech Event Detector (3) survive only through the keywords.
+Interest keywords come from `--keywords` (interests given in the call) or else from `interests.json` for `--project P`. Dropped stories leave `items.json` and the appendix; `status.json` keeps a per-source `dropped` count and the listing shows it. When keywords exist the listing gains a section of up to 30 interest matches, title hits before abstract hits, so low-score but relevant work stays in view. In W42 the top quarter meant 39 upvotes or more on HF (89 of 355) and a score of 53 or more on r/LocalLLaMA; DuplexJev (1 upvote) and Speech Event Detector (3) survive only through the keywords.
 
 ## 12. Out of scope
 

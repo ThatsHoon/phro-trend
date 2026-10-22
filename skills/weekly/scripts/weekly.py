@@ -688,7 +688,8 @@ def listing(stories: list[dict], status: dict, week: str, start: datetime, end: 
     lines += warn + fine
     multi = sorted((s for s in stories if s["n_sources"] >= 2), key=lambda s: (-s["n_sources"], -(s["score"] or 0)))
     lines += ["", "== 여러 곳에서 나온 소식 =="] + [_row(s) for s in multi[:40]]
-    matched = sorted((s for s in stories if s.get("match")), key=lambda s: (s["score"] is None, -(s["score"] or 0)))
+    matched = sorted((s for s in stories if s.get("match")),  # title hits first: a keyword in the abstract is weaker
+                     key=lambda s: (s["match"] != "title", s["score"] is None, -(s["score"] or 0)))
     if matched:
         lines += ["", "== 관심사에 맞는 글 =="] + [_row(s) for s in matched[:MATCH_CAP]]
     for key, label, *_ in SOURCES:
@@ -713,8 +714,10 @@ def prefilter(stories: list[dict], keywords: list[str]) -> tuple[list[dict], dic
             cut[key] = scores[max(1, math.ceil(len(scores) * KEEP_SHARE)) - 1]
     kept, dropped = [], {}
     for s in stories:
-        if words and any(w in f"{s['title']} {s.get('head') or ''}".lower() for w in words):
-            s["match"] = True
+        if any(w in s["title"].lower() for w in words):
+            s["match"] = "title"
+        elif any(w in (s.get("head") or "").lower() for w in words):
+            s["match"] = "head"
         if (s.get("match") or s["n_sources"] >= 2 or s["source"] not in cut or s["score"] is None
                 or s["score"] >= cut[s["source"]]):
             kept.append(s)

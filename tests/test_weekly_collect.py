@@ -1,6 +1,7 @@
 import contextlib, io, json, os, tempfile, unittest
 from datetime import date, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 from tests._load import load
 
 w = load("skills/weekly/scripts/weekly.py")
@@ -220,6 +221,15 @@ class CollectTest(unittest.TestCase):
         self.assertIn("Speech event detector", printed.split("== 관심사에 맞는 글 ==")[1])
         self.assertNotIn("2610.00001", self.stories())
         self.assertIn("2610.00002", self.stories())
+
+    def test_match_section_puts_title_hits_first(self):
+        rows = self.hf_rows()
+        rows[29]["paper"]["summary"] = "A speech model"  # 2610.00030: top score, keyword only in the head
+        with mock.patch.object(w, "MATCH_CAP", 1):
+            _, printed = self.run_collect(get=make_get(hf=rows), keywords=["speech"])
+        section = printed.split("== 관심사에 맞는 글 ==")[1].split(chr(10) * 2)[0]
+        self.assertIn("Speech event detector", section)
+        self.assertNotIn("2610.00030", section)
 
     def interest_store(self, text):
         project = Path(self.tmp.name) / "proj"
