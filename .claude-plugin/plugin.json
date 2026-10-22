@@ -1,6 +1,6 @@
 {
   "name": "phro-trend",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "MIT",
   "description": "Turn trending research papers and a week of AI news into practical Korean briefs: what changed, how far to trust it, and where it fits in your stack.",
   "author": {

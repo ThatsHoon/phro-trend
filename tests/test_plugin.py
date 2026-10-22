@@ -18,6 +18,11 @@ class PluginTest(unittest.TestCase):
         text = (ROOT / "skills/weekly/SKILL.md").read_text(encoding="utf-8")
         self.assertRegex(text, r"data-id.{0,60}items\.json")
 
+    def test_interests_never_drop_big_changes(self):
+        text = (ROOT / "skills/weekly/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("관심사는 무게를 더할 뿐 거르지 않는다", text)
+        self.assertIn("관심사 밖의 큰 변화", text)
+
     def test_constants_agree(self):
         c, w = load("scripts/check.py"), load("skills/weekly/scripts/weekly.py")
         self.assertEqual((c.STAGES, c.LABELS, c.EVIDENCE), (w.STAGES, w.LABELS, w.EVIDENCE))
