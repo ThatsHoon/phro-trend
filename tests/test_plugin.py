@@ -8,7 +8,7 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(meta["version"], load("skills/weekly/scripts/weekly.py").VERSION)
 
     def test_skill_commands_exist(self):
-        for skill in ("ai", "weekly"):
+        for skill in ("ai", "weekly", "interest"):
             text = (ROOT / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
             paths = re.findall(r"\$\{CLAUDE_PLUGIN_ROOT\}/([\w/.-]+\.py)", text)
             self.assertTrue(paths, skill)

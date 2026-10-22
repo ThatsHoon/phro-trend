@@ -12,9 +12,10 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+GENERIC = {"ai", "llm", "ml", "model", "models", "모델", "인공지능", "딥러닝", "machine learning", "deep learning"}
 HOME = Path.home() / ".claude" / "phro-trend"
 CLAUDE_DIR = Path(os.environ["CLAUDE_CONFIG_DIR"]) if os.environ.get("CLAUDE_CONFIG_DIR") else Path.home() / ".claude"
 DAYS = 14
@@ -243,19 +244,105 @@ def gather(project: Path, claude_dir: Path = CLAUDE_DIR, days: int = DAYS, now: 
     return text, count
 
 
+def iso_week(d: date) -> str:
+    year, week, _ = d.isocalendar()
+    return f"{year}-W{week:02d}"
+
+
+def validate(data) -> str | None:
+    items = data.get("interests") if isinstance(data, dict) else None
+    if not isinstance(items, list) or not 5 <= len(items) <= 8:
+        return "need an object whose interests list has 5 to 8 items"
+    for n, x in enumerate(items, 1):
+        if not isinstance(x, dict):
+            return f"interest {n}: not an object"
+        topic, keywords, why = x.get("topic"), x.get("keywords"), x.get("why")
+        if not isinstance(topic, str) or not 1 <= len(topic.strip()) <= 40:
+            return f"interest {n}: topic must be 1 to 40 characters"
+        if not (isinstance(keywords, list) and 2 <= len(keywords) <= 5
+                and all(isinstance(k, str) and k.strip() for k in keywords)):
+            return f"interest {n}: keywords must be 2 to 5 non-empty strings"
+        generic = [k for k in keywords if k.strip().lower() in GENERIC]
+        if generic:
+            return f"interest {n}: generic keywords {generic} match every story; use specific terms"
+        if not isinstance(why, str) or not 1 <= len(why.strip()) <= 120:
+            return f"interest {n}: why must be 1 to 120 characters"
+    return None
+
+
+def _load_store(path: Path) -> dict:
+    """A missing store is empty; a broken one raises, so nothing ever writes over it."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except ValueError as e:
+        raise ValueError(f"{path} is broken ({e}); fix or delete it") from None
+
+
+def save(project: Path, data: dict, home: Path = HOME, now: datetime | None = None) -> None:
+    reason = validate(data)
+    if reason:
+        raise ValueError(reason)
+    path = Path(home) / "interests.json"
+    store = _load_store(path)
+    now = now or datetime.now().astimezone()
+    keep = [{k: x[k] for k in ("topic", "keywords", "why")} for x in data["interests"]]
+    store[project_key(project)] = {"week": iso_week(now.date()), "updated": now.isoformat(timespec="seconds"),
+                                   "interests": keep}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(store, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def show(project: Path, home: Path = HOME, today: date | None = None) -> str:
+    try:
+        entry = _load_store(Path(home) / "interests.json").get(project_key(project))
+    except ValueError as e:
+        return f"warning: {e}; no interests used"
+    now = iso_week(today or date.today())
+    if not entry:
+        return "refresh due: no interests for this folder"
+    if entry.get("week") != now:
+        return f"refresh due: stored {entry.get('week')}, now {now}"
+    lines = [f"interests {now} (current, updated {str(entry.get('updated', ''))[:10]})"]
+    lines += [f"{n}. {x['topic']} [{', '.join(x['keywords'])}]" for n, x in enumerate(entry["interests"], 1)]
+    return NL.join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="interest.py", description="phro-trend interests for one project folder")
     sub = ap.add_subparsers(dest="cmd", required=True)
     g = sub.add_parser("gather", help="print the input for writing interests")
-    g.add_argument("--project", required=True, help="the folder the session started in")
+    s = sub.add_parser("save", help="validate and store interests JSON")
+    s.add_argument("file", help="JSON file, or - for stdin")
+    w = sub.add_parser("show", help="print this week's interests or 'refresh due'")
+    for p in (g, s, w):
+        p.add_argument("--project", required=True, help="the folder the session started in")
     g.add_argument("--days", type=int, default=DAYS)
     g.add_argument("--claude-dir", default=str(CLAUDE_DIR))
+    for p in (s, w):
+        p.add_argument("--home", default=str(HOME), help="record folder (default ~/.claude/phro-trend)")
     args = ap.parse_args(argv)
-    text, count = gather(Path(args.project), Path(args.claude_dir), args.days)
-    if text:
+    project = Path(args.project)
+    if args.cmd == "gather":
+        text, count = gather(project, Path(args.claude_dir), args.days)
+        if text:
+            print(text)
+        print(count)
+        return 0 if text else 1
+    if args.cmd == "show":
+        text = show(project, Path(args.home))
         print(text)
-    print(count)
-    return 0 if text else 1
+        return 1 if text.startswith("warning:") else 0
+    try:
+        raw = sys.stdin.read() if args.file == "-" else Path(args.file).read_text(encoding="utf-8")
+        data = json.loads(raw)
+        save(project, data, Path(args.home))
+    except (OSError, ValueError) as e:
+        print(f"error: {e}")
+        return 1
+    print(f"saved {len(data['interests'])} interests for {project_key(project)} ({iso_week(date.today())})")
+    return 0
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import contextlib, io, json, os, re, tempfile, time, unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 from tests._load import load
 
 i = load("skills/interest/scripts/interest.py")
@@ -188,6 +189,73 @@ class GatherTest(Base):
             self.assertEqual(i.main(["gather", "--project", str(self.project), "--claude-dir", str(self.claude)]), 0)
         last = out.getvalue().splitlines()[-1]
         self.assertTrue(last.startswith("sessions 0, prompts 0, documents 1, skipped 0, "), last)
+
+
+KST = timezone(timedelta(hours=9))
+FIVE = {"interests": [{"topic": f"주제 {n}", "keywords": [f"kw{n}", "Whisper"], "why": "최근 세션 작업"} for n in range(5)]}
+
+
+def with_interest(**change):
+    data = json.loads(json.dumps(FIVE))
+    data["interests"][0].update(change)
+    return data
+
+
+class StoreTest(Base):
+    def setUp(self):
+        super().setUp()
+        self.home = self.project.parent / "home"
+
+    def test_iso_week(self):
+        self.assertEqual(i.iso_week(date(2026, 10, 22)), "2026-W43")
+        self.assertEqual(i.iso_week(date(2027, 1, 1)), "2026-W53")
+
+    def test_save_then_show_current(self):
+        i.save(self.project, FIVE, self.home, now=datetime(2026, 10, 22, 9, tzinfo=KST))
+        text = i.show(self.project, self.home, today=date(2026, 10, 24))
+        self.assertTrue(text.startswith("interests 2026-W43 (current, updated 2026-10-22)"), text)
+        self.assertIn("1. 주제 0 [kw0, Whisper]", text)
+
+    def test_show_refresh_due(self):
+        self.assertEqual(i.show(self.project, self.home, today=date(2026, 10, 22)), "refresh due: no interests for this folder")
+        self.home.mkdir()
+        (self.home / "interests.json").write_text(json.dumps({i.project_key(self.project): {
+            "week": "2026-W42", "updated": "2026-10-15T09:00:00+09:00", "interests": FIVE["interests"]}}), encoding="utf-8")
+        self.assertEqual(i.show(self.project, self.home, today=date(2026, 10, 22)), "refresh due: stored 2026-W42, now 2026-W43")
+
+    def test_invalid_rejected(self):
+        cases = (({"interests": FIVE["interests"][:4]}, "5 to 8"), (with_interest(keywords=["", "x"]), "keyword"),
+                 (with_interest(topic="가" * 41), "topic"), (with_interest(keywords=["AI", "LLM"]), "generic"),
+                 (with_interest(why="w" * 121), "why"))
+        for bad, word in cases:
+            with self.assertRaises(ValueError) as cm:
+                i.save(self.project, bad, self.home)
+            self.assertIn(word, str(cm.exception))
+        self.assertFalse((self.home / "interests.json").exists())
+
+    def test_broken_store_kept(self):
+        self.home.mkdir()
+        (self.home / "interests.json").write_text("{oops", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            i.save(self.project, FIVE, self.home)
+        self.assertEqual((self.home / "interests.json").read_text(encoding="utf-8"), "{oops")
+        self.assertTrue(i.show(self.project, self.home).startswith("warning:"))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(i.main(["show", "--project", str(self.project), "--home", str(self.home)]), 1)
+
+    def test_cli_save_from_stdin(self):
+        out = io.StringIO()
+        with mock.patch("sys.stdin", io.StringIO(json.dumps(FIVE))), contextlib.redirect_stdout(out):
+            self.assertEqual(i.main(["save", "--project", str(self.project), "--home", str(self.home), "-"]), 0)
+        self.assertTrue(i.show(self.project, self.home).startswith("interests "))
+        with mock.patch("sys.stdin", io.StringIO("not json")), contextlib.redirect_stdout(out):
+            self.assertEqual(i.main(["save", "--project", str(self.project), "--home", str(self.home), "-"]), 1)
+
+    @unittest.skipUnless(os.name == "nt", "Windows paths")
+    def test_store_key_ignores_spelling(self):
+        i.save(self.project, FIVE, self.home)
+        upper = Path(str(self.project).upper().replace("\\", "/"))
+        self.assertTrue(i.show(upper, self.home).startswith("interests "))
 
 
 if __name__ == "__main__":
