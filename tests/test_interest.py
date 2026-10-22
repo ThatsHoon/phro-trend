@@ -1,4 +1,4 @@
-import contextlib, io, json, os, re, tempfile, time, unittest
+import contextlib, io, json, os, re, subprocess, sys, tempfile, time, unittest
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
@@ -189,6 +189,19 @@ class GatherTest(Base):
         self.assertIn("- " + "p" * 20, text)  # prompts survive a long summary
         self.assertIn("doc0.md", text)
 
+    def test_render_keeps_newest_sessions(self):
+        text = i.render([fake_session(n) for n in range(300)], [])
+        self.assertEqual(text.count("## session "), 20)
+        self.assertIn("- " + "p" * 20, text)
+
+    def test_gather_refuses_home_and_roots(self):
+        out = io.StringIO()
+        with mock.patch.object(i.Path, "home", return_value=self.project), contextlib.redirect_stdout(out):
+            self.assertEqual(i.main(["gather", "--project", str(self.project), "--claude-dir", str(self.claude)]), 1)
+        self.assertTrue(out.getvalue().startswith("error:"), out.getvalue())
+        self.assertTrue(i._too_broad(Path(self.project.anchor)))
+        self.assertFalse(i._too_broad(self.project))
+
     def test_gather_exit_codes(self):
         empty = self.project.parent / "empty"
         empty.mkdir()
@@ -261,6 +274,20 @@ class StoreTest(Base):
         self.assertTrue(i.show(self.project, self.home).startswith("interests "))
         with mock.patch("sys.stdin", io.StringIO("not json")), contextlib.redirect_stdout(out):
             self.assertEqual(i.main(["save", "--project", str(self.project), "--home", str(self.home), "-"]), 1)
+
+    def test_cli_save_reads_utf8_stdin(self):
+        # python -I ignores PYTHONUTF8, so stdin would decode with the locale codec (cp949 on Korean Windows)
+        r = subprocess.run([sys.executable, "-I", i.__file__, "save", "--project", str(self.project), "--home", str(self.home), "-"],
+                           input=json.dumps(FIVE, ensure_ascii=False).encode("utf-8"), capture_output=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("주제 0", (self.home / "interests.json").read_text(encoding="utf-8"))
+
+    def test_failed_write_keeps_store(self):
+        i.save(self.project, FIVE, self.home)
+        before = (self.home / "interests.json").read_bytes()
+        with self.assertRaises(ValueError):
+            i.save(self.project.parent / "other", with_interest(why="x" + chr(0xDCFF)), self.home)
+        self.assertEqual((self.home / "interests.json").read_bytes(), before)
 
     @unittest.skipUnless(os.name == "nt", "Windows paths")
     def test_store_key_ignores_spelling(self):

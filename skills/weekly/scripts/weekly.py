@@ -704,9 +704,18 @@ def listing(stories: list[dict], status: dict, week: str, start: datetime, end: 
     return "\n".join(lines)
 
 
+def _matcher(keyword: str):
+    """ASCII terms match whole words with an optional plural s, so NPU never hits "input";
+    Hangul is matched inside words, since Korean attaches particles to them."""
+    k = keyword.strip().lower()
+    if k.isascii():
+        return re.compile(r"(?<![a-z0-9])" + re.escape(k) + r"s?(?![a-z0-9])").search
+    return lambda text: k in text
+
+
 def prefilter(stories: list[dict], keywords: list[str]) -> tuple[list[dict], dict[str, int]]:
     """Keep multi-source, unscored, top-quarter and interest-matching stories; count the rest per source."""
-    words = [k.lower() for k in keywords if k.strip()]
+    matchers = [_matcher(k) for k in keywords if k.strip()]
     cut = {}
     for key in SCORED:
         scores = sorted((s["score"] for s in stories if s["source"] == key and s["score"] is not None), reverse=True)
@@ -714,9 +723,10 @@ def prefilter(stories: list[dict], keywords: list[str]) -> tuple[list[dict], dic
             cut[key] = scores[max(1, math.ceil(len(scores) * KEEP_SHARE)) - 1]
     kept, dropped = [], {}
     for s in stories:
-        if any(w in s["title"].lower() for w in words):
+        title, head = s["title"].lower(), (s.get("head") or "").lower()
+        if any(m(title) for m in matchers):
             s["match"] = "title"
-        elif any(w in (s.get("head") or "").lower() for w in words):
+        elif any(m(head) for m in matchers):
             s["match"] = "head"
         if (s.get("match") or s["n_sources"] >= 2 or s["source"] not in cut or s["score"] is None
                 or s["score"] >= cut[s["source"]]):
@@ -797,12 +807,13 @@ def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, t
             print(f"경고: {e}. 이번 목록에는 그 기록의 표시가 빠진다.")
             records.append({})
     mark_covered(stories, *records, week)
-    if keywords is None and project is not None:
+    words = list(keywords or [])  # the rescue only adds, so call keywords join the stored ones
+    if project is not None:
         try:
-            keywords = _interest_keywords(home, project)
+            words += _interest_keywords(home, project)
         except ValueError as e:
-            print(f"경고: {e}. 관심사 키워드 없이 거른다.")
-    stories, dropped = prefilter(stories, keywords or [])
+            print(f"경고: {e}. 저장된 관심사 키워드 없이 거른다.")
+    stories, dropped = prefilter(stories, words)
     for key, st in status.items():
         st["dropped"] = dropped.get(key, 0)
     payload = {"week": week, "start": start.isoformat(), "end": end.isoformat(),

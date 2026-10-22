@@ -28,7 +28,7 @@ Group by story, not by source. The same story on HF, Reddit and a newsletter is 
    ```bash
    python -I ${CLAUDE_PLUGIN_ROOT}/skills/weekly/scripts/weekly.py collect --out <work folder> --project <P> [--week YYYY-Www] [--keywords K ...]
    ```
-   Pass the call's interests as `--keywords` when the call gives them. Without a week it uses the last finished week. The screen shows the source status (warnings first), stories from several places, interest matches and the top stories per source. `items.json` holds every kept story and `status.json` each source's result. When the status shows "쌓기 일정 미등록", read "Pull schedule" below first.
+   When the call gives interests, pass them as `--keywords` written as English news terms (음성 becomes speech and ASR), since titles are mostly English; they add to the stored keywords. Without a week it uses the last finished week. The screen shows the source status (warnings first), stories from several places, interest matches and the top stories per source. `items.json` holds every kept story and `status.json` each source's result. When the status shows "쌓기 일정 미등록", read "Pull schedule" below first.
 
    Collect drops low-popularity stories first. It keeps a story that came from two or more places, comes from a source without a usable score, has no score yet, sits in the top quarter of its source, or matches an interest keyword. Source lines show what was dropped ("인기 하위 N개 뺌"). The "== 관심사에 맞는 글 ==" section lists the matches whatever their score; a low score there is no reason to skip a story.
 
@@ -106,7 +106,7 @@ A story that fits none stays in the appendix only. The evidence level is one of 
 
 ## Picking
 
-A story is core when it is one of the week's big changes, or when it matches the interests and has code, a model or a measured number someone can try. Write every core story, 1 to 10, most important first; the rest become short news. Rank them by:
+A story passes the bar when it is one of the week's big changes, or when it matches the interests and has code, a model or a measured number someone can try. Every passing story becomes a core story, most important first, and the rest become short news. Rank them by:
 1. Did several places carry it? Look at "여러 곳에서 나온 소식" first.
 2. Does it touch practice now: released code or a model, running on common GPUs?
 3. Does it fit the reader: the call's interests, else the automatic interests from step 0, else the project context in the conversation and memory?
@@ -117,7 +117,7 @@ Interests add weight and never filter: the week's big changes stay in even when 
 - a new model or tool from a major lab or company, or a story near the top of its source (about the top 5 of HF Daily Papers and r/LocalLLaMA);
 - something readers must act on now, such as a security incident or a license change in a widely used tool.
 
-With interests, at least two thirds of the core stories, rounded down (3 gives 2, 10 gives 6), come from them, and the other core slots go to the big changes outside the interests, largest first. Remaining big changes go to the short news under their stage.
+When more than 10 stories pass, keep 10. With interests, at least two thirds of those 10 (6) come from them when that many pass, and the other slots go to the big changes outside the interests, largest first. Big changes left over go to the short news under their stage.
 
 Pick short news among items that can carry a label, spread across stages. From the domestic sources (PyTorchKR, GeekNews) keep what only they carry, such as events or Korean-language material.
 
@@ -153,6 +153,6 @@ It writes `~/.claude/phro-trend/pull_launcher.py` and only prints the registrati
 ## When things fail
 
 - collect exiting 1 means no source came in. Write nothing and tell the user the reasons in the status.
-- Fewer than 3 core stories: write what there is and say in the flow paragraph that it was a quiet week.
+- When fewer than 3 stories pass the bar, write what there is and say in the flow paragraph that it was a quiet week.
 - Failed or partial sources ("실패", "일부만 받음" in the status) go into the appendix status table with their reasons.
 - Reddit goes through the arctic-shift archive, whose server sometimes errors; rerun from collect later when it does. Writing and recording the same week again overwrites that week's record.

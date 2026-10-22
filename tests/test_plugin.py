@@ -28,6 +28,11 @@ class PluginTest(unittest.TestCase):
         for needle in ("interest.py show", "refresh due", "--project", "--keywords", "관심사(자동"):
             self.assertIn(needle, text)
 
+    def test_pick_rules_fill_slots(self):
+        text = (ROOT / "skills/weekly/SKILL.md").read_text(encoding="utf-8")
+        for needle in ("When more than 10 stories pass", "fewer than 3 stories pass the bar", "English news terms"):
+            self.assertIn(needle, text)
+
     def test_version_is_030(self):
         self.assertEqual(load("skills/weekly/scripts/weekly.py").VERSION, "0.3.0")
 

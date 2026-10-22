@@ -24,6 +24,7 @@ PROMPTS_PER_SESSION = 8
 SUMMARY_CHARS = 600
 LONG_PROMPT = 2000  # longer prompts are pasted data or batch payloads, not typed requests
 SESSION_BUDGET = 7000
+MAX_SESSIONS = 20  # newest first; an hourly job would otherwise shrink every share to nothing
 DOC_BUDGET = 3000
 BUDGET = SESSION_BUDGET + DOC_BUDGET
 DOC_LIMIT = 60
@@ -213,7 +214,7 @@ def documents(project: Path, since: datetime) -> tuple[list[str], int]:
 
 def render(sessions: list[dict], docs: list[str]) -> str:
     """Sessions share SESSION_BUDGET equally (summary at most half of a share), documents get DOC_BUDGET."""
-    parts = []
+    parts, sessions = [], sessions[:MAX_SESSIONS]
     if sessions:
         share = SESSION_BUDGET // len(sessions) - 2
         for s in sessions:
@@ -221,9 +222,10 @@ def render(sessions: list[dict], docs: list[str]) -> str:
             if s["summary"]:
                 block += NL + s["summary"][: share // 2]
             for prompt in s["prompts"]:
-                if len(block) + len(prompt) + 3 > share:
+                room = share - len(block) - 3
+                if room < 20:
                     break
-                block += NL + "- " + prompt
+                block += NL + "- " + prompt[:room]
             parts.append(block[:share])
     if docs:
         block = "## Documents"
@@ -240,7 +242,9 @@ def gather(project: Path, claude_dir: Path = CLAUDE_DIR, days: int = DAYS, now: 
     found, bad = sessions(claude_dir, project, since)
     docs, bad_docs = documents(project, since)
     text = render(found, docs)
-    count = (f"sessions {len(found)}, prompts {sum(len(s['prompts']) for s in found)}, documents {len(docs)}, "
+    shown = found[:MAX_SESSIONS]
+    older = f" (newest {MAX_SESSIONS} shown)" if len(found) > MAX_SESSIONS else ""
+    count = (f"sessions {len(found)}{older}, prompts {sum(len(s['prompts']) for s in shown)}, documents {len(docs)}, "
              f"skipped {bad + bad_docs}, {len(text)} chars")
     return text, count
 
@@ -291,8 +295,11 @@ def save(project: Path, data: dict, home: Path = HOME, now: datetime | None = No
     keep = [{k: x[k] for k in ("topic", "keywords", "why")} for x in data["interests"]]
     store[project_key(project)] = {"week": iso_week(now.date()), "updated": now.isoformat(timespec="seconds"),
                                    "interests": keep}
+    data_bytes = json.dumps(store, ensure_ascii=False, indent=1).encode("utf-8")  # fails before any file is touched
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(store, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_bytes(data_bytes)
+    os.replace(tmp, path)
 
 
 def show(project: Path, home: Path = HOME, today: date | None = None) -> str:
@@ -308,6 +315,12 @@ def show(project: Path, home: Path = HOME, today: date | None = None) -> str:
     lines = [f"interests {now} (current, updated {str(entry.get('updated', ''))[:10]})"]
     lines += [f"{n}. {x['topic']} [{', '.join(x['keywords'])}]" for n, x in enumerate(entry["interests"], 1)]
     return NL.join(lines)
+
+
+def _too_broad(path: Path) -> bool:
+    """A home folder or drive root is not a project: walking it mixes every project and takes minutes."""
+    p = Path(path).resolve()
+    return p == Path.home().resolve() or p == Path(p.anchor)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -326,6 +339,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     project = Path(args.project)
     if args.cmd == "gather":
+        if _too_broad(project):
+            print(f"error: {project} is a home folder or drive root; start the session in a project folder")
+            return 1
         text, count = gather(project, Path(args.claude_dir), args.days)
         if text:
             print(text)
@@ -336,7 +352,9 @@ def main(argv: list[str] | None = None) -> int:
         print(text)
         return 1 if text.startswith("warning:") else 0
     try:
-        raw = sys.stdin.read() if args.file == "-" else Path(args.file).read_text(encoding="utf-8")
+        stdin = getattr(sys.stdin, "buffer", None)  # python -I ignores PYTHONUTF8: decode stdin bytes as UTF-8 ourselves
+        raw = ((stdin.read().decode("utf-8") if stdin else sys.stdin.read()) if args.file == "-"
+               else Path(args.file).read_text(encoding="utf-8"))
         data = json.loads(raw)
         save(project, data, Path(args.home))
     except (OSError, ValueError) as e:

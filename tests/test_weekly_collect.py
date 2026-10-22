@@ -231,6 +231,19 @@ class CollectTest(unittest.TestCase):
         self.assertIn("Speech event detector", section)
         self.assertNotIn("2610.00030", section)
 
+    def test_ascii_keywords_match_whole_words(self):
+        titles = ["Input layer tricks", "Answers get lower", "Coverage study", "NPU inference at the edge",
+                  "WER drops 20%", "RAGs for code", "음성인식 모델"]
+        kept, _ = w.prefilter([hf(f"t{n}", None, title=t) for n, t in enumerate(titles)], ["NPU", "WER", "RAG", "음성"])
+        self.assertEqual([s["title"] for s in kept if s.get("match")], titles[3:])
+
+    def test_call_keywords_add_to_stored(self):
+        project = self.interest_store(lambda key: json.dumps({key: {"week": "2026-W43", "updated": "", "interests": [
+            {"topic": "t", "keywords": ["speech", "asr"], "why": "w"}]}}))
+        _, printed = self.run_collect(get=make_get(hf=self.hf_rows()), project=project, keywords=["LoRA"])
+        self.assertIn("== 관심사에 맞는 글 ==", printed)
+        self.assertIn("Speech event detector", printed.split("== 관심사에 맞는 글 ==")[1])
+
     def interest_store(self, text):
         project = Path(self.tmp.name) / "proj"
         project.mkdir(exist_ok=True)

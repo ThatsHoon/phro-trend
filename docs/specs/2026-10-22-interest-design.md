@@ -44,7 +44,7 @@ Assistant text and tool output are never read, because raw data and secrets live
 
 **Memory** is not included. Claude Code already loads `MEMORY.md` into every session started in P, and the skill tells Claude to weigh it.
 
-**Budget.** At most 10,000 characters are printed: sessions 7,000 in equal shares, newest first, then documents 3,000.
+**Budget.** At most 10,000 characters are printed: sessions 7,000 in equal shares, newest first and at most 20 of them (the count line says when more exist), then documents 3,000.
 
 ## 4. Writing the interests
 
@@ -98,7 +98,8 @@ tests/test_interest.py
 
 - No sessions and no documents: `gather` exits 1, and `weekly` continues without automatic interests.
 - Broken record lines and unreadable files are skipped and counted in the count line.
-- Invalid JSON: `save` prints the reason and stores nothing.
+- Invalid JSON: `save` prints the reason and stores nothing. `save` reads stdin as UTF-8 bytes, because `python -I` ignores PYTHONUTF8, and writes a temporary file that it renames over the store, so a failed write never empties it.
+- A home folder or a drive root as P: `gather` prints `error:` and exits 1, since walking it would mix every project and take minutes.
 - Corrupt `interests.json`: `save` refuses to overwrite it, as `weekly.py mark` does. `show` warns, and `weekly` continues without automatic interests.
 
 ## 9. Tests
@@ -107,7 +108,7 @@ Fake `.claude` and project trees cover tag removal, the tool_result skip, fork d
 
 ## 10. Up to ten stories and papers
 
-**weekly.** The page holds 1 to 10 core stories, as many as pass the bar, most important first. A story passes when it is one of the week's big changes (definition unchanged) or when it matches the interests and has code, a model or a measured number someone can try. The rest go to the short news. With interests, at least two thirds of the core stories, rounded down, come from them (3 gives 2, 10 gives 6); the other core slots go to the biggest changes outside them, and remaining big changes go to the short news. Fewer than 3 passing stories still means a quiet week, said in the flow paragraph. The glance keeps at most 3 sentences, for the top 3 core stories. The map numbers core stories from ① to ⑩. The body cap becomes 2,000 plus 1,000 per core story (3 stories give today's 5,000, 10 give 12,000). Delivery lists one line per core story.
+**weekly.** The page holds 1 to 10 core stories, as many as pass the bar, most important first. A story passes when it is one of the week's big changes (definition unchanged) or when it matches the interests and has code, a model or a measured number someone can try. The rest go to the short news. When more than 10 stories pass, 10 are kept: with interests, at least two thirds of them (6) come from the interests when that many pass, the other slots go to the biggest changes outside them, and the big changes left over go to the short news. Fewer than 3 passing stories still means a quiet week, said in the flow paragraph. The glance keeps at most 3 sentences, for the top 3 core stories. The map numbers core stories from ① to ⑩. The body cap becomes 2,000 plus 1,000 per core story (3 stories give today's 5,000, 10 give 12,000). Delivery lists one line per core story.
 
 **ai.** `papers.py pick` downloads up to 10 unseen trending papers (`--n` defaults to 10). Claude writes every paper that passes the bar: a practitioner can use or test it, its body has enough for all eight sections, and it is not a near copy of another pick. That is usually 3 to 10 papers, fewer when the trending list is thin. Only written papers are marked. `check.py` accepts 1 to 10 paper sections.
 
@@ -120,7 +121,7 @@ After merging, `collect` keeps a story when any of these holds:
 - its score is in the top quarter of its source this week, or its source has fewer than 20 scored stories;
 - its title or head contains an interest keyword, ignoring case.
 
-Interest keywords come from `--keywords` (interests given in the call) or else from `interests.json` for `--project P`. Dropped stories leave `items.json` and the appendix; `status.json` keeps a per-source `dropped` count and the listing shows it. When keywords exist the listing gains a section of up to 30 interest matches, title hits before abstract hits, so low-score but relevant work stays in view. In W42 the top quarter meant 39 upvotes or more on HF (89 of 355) and a score of 53 or more on r/LocalLLaMA; DuplexJev (1 upvote) and Speech Event Detector (3) survive only through the keywords.
+Interest keywords are the union of `--keywords` (interests given in the call, written as English news terms) and the ones stored in `interests.json` for `--project P`; the rescue only adds, so both apply. ASCII keywords match whole words with an optional plural s, so "NPU" never hits "input"; Hangul keywords match inside words. Dropped stories leave `items.json` and the appendix; `status.json` keeps a per-source `dropped` count and the listing shows it. When keywords exist the listing gains a section of up to 30 interest matches, title hits before abstract hits, so low-score but relevant work stays in view. In W42 the top quarter meant 39 upvotes or more on HF (89 of 355) and a score of 53 or more on r/LocalLLaMA; DuplexJev (1 upvote) and Speech Event Detector (3) survive only through the keywords.
 
 ## 12. Out of scope
 
