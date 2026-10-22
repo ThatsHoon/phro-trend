@@ -1,6 +1,6 @@
-# phro-trend:interest design
+# phro-trend 0.3.0 design: interest skill and related changes
 
-Date 2026-10-22. Status: awaiting review. The transcript layout and sizes below were measured on this machine on 2026-10-22.
+Date 2026-10-22. Status: approved 2026-10-22; sections 10 and 11 were added the same day at the user's request. The transcript layout and sizes below were measured on this machine on 2026-10-22.
 
 ## 1. Goal and success criteria
 
@@ -13,12 +13,14 @@ The skill works when:
 4. The stored file holds topics, keywords and reasons only: no quotes and no data values.
 5. `weekly` applies its existing rule to automatic interests (at least 2 of the 3 core stories come from them, big changes are never dropped). Interests given in the call win for that run.
 6. One refresh costs about 10,000 characters of input.
+7. `weekly` writes up to 10 core stories and `ai` up to 10 papers, as many as pass their bar.
+8. `collect` drops low-popularity stories but keeps every interest match.
 
 ## 2. Language rule for the whole plugin
 
 Skills are built in English and write in Korean, because instructions are loaded on every call and English costs fewer tokens. SKILL.md files, STYLE.md instructions, specs, plans and new script messages are English. Korean stays wherever it is output or data: page section titles, labels and h4 names that the checker reads, the banned-phrase lists, example sentences that show the target Korean, and the status strings existing scripts print.
 
-This change converts `skills/ai/SKILL.md`, `skills/weekly/SKILL.md` and `STYLE.md`. The messages of `weekly.py` and `check.py` stay Korean for now: they are short and tests pin them.
+This change converts `skills/ai/SKILL.md`, `skills/weekly/SKILL.md` and `STYLE.md`. The messages of `weekly.py` and `check.py`, new ones in this change included, stay Korean for now: they are short and tests pin them.
 
 ## 3. Inputs
 
@@ -71,7 +73,7 @@ The key is P resolved to an absolute path. `week` is the ISO week of the save da
 
 ## 6. Hook into weekly
 
-`weekly.py` does not change. `skills/weekly/SKILL.md` gains three things.
+`skills/weekly/SKILL.md` gains three things; `weekly.py collect` gains the pre-filter of section 11.
 - Step 0: run `interest.py show --project P`. On `refresh due`, follow the `interest` skill, then continue. Interests given in the call are used for this run, and the refresh still happens on the first run of the week.
 - Pick rules: call interests, else automatic interests, else the conversation and memory context. The 2-of-3 rule and the big-change rule apply to both kinds of interests.
 - Delivery: one line, `관심사(자동, 2026-W43): a, b, c` or `관심사(호출): ...`. The page shows nothing, as decided for 0.2.1.
@@ -101,8 +103,25 @@ tests/test_interest.py
 
 ## 9. Tests
 
-Fake `.claude` and project trees cover tag removal, the tool_result skip, fork dedupe, the 14-day window, subfolder sessions, the lookalike folder, document exclusions, folder folding, the 10,000-character cap, save and show freshness, invalid JSON, and a corrupt store left intact. `tests/test_plugin.py` adds `interest` to the command-path and version checks and checks that the weekly SKILL.md runs `interest.py show`. The English rewrites keep the existing tests that read SKILL.md and STYLE.md green, with their phrases updated. A live `gather` on a real project checks the counts and the length.
+Fake `.claude` and project trees cover tag removal, the tool_result skip, fork dedupe, the 14-day window, subfolder sessions, the lookalike folder, document exclusions, folder folding, the 10,000-character cap, save and show freshness, invalid JSON, and a corrupt store left intact. `tests/test_plugin.py` adds `interest` to the command-path and version checks and checks that the weekly SKILL.md runs `interest.py show`. The English rewrites keep the existing tests that read SKILL.md and STYLE.md green, with their phrases updated. `check.py` tests cover 1 to 10 stories and papers and the scaled body cap; `collect` tests cover each keep rule, the dropped counts and the interest section. A live `gather` on a real project checks the counts and the length, and a live W42 `collect` checks the dropped counts.
 
-## 10. Out of scope
+## 10. Up to ten stories and papers
+
+**weekly.** The page holds 1 to 10 core stories, as many as pass the bar, most important first. A story passes when it is one of the week's big changes (definition unchanged) or when it matches the interests and has code, a model or a measured number someone can try. The rest go to the short news. With interests, at least two thirds of the core stories, rounded down, come from them (3 gives 2, 10 gives 6); the other core slots go to the biggest changes outside them, and remaining big changes go to the short news. Fewer than 3 passing stories still means a quiet week, said in the flow paragraph. The glance keeps at most 3 sentences, for the top 3 core stories. The map numbers core stories from ① to ⑩. The body cap becomes 2,000 plus 1,000 per core story (3 stories give today's 5,000, 10 give 12,000). Delivery lists one line per core story.
+
+**ai.** `papers.py pick` downloads up to 10 unseen trending papers (`--n` defaults to 10). Claude writes every paper that passes the bar: a practitioner can use or test it, its body has enough for all eight sections, and it is not a near copy of another pick. That is usually 3 to 10 papers, fewer when the trending list is thin. Only written papers are marked. `check.py` accepts 1 to 10 paper sections.
+
+## 11. Popularity pre-filter in collect
+
+After merging, `collect` keeps a story when any of these holds:
+- it came from two or more places;
+- its source has no usable popularity score: every source except HF Daily Papers, r/LocalLLaMA and r/MachineLearning (PyTorchKR likes are mostly 0 to 2);
+- its score is not known yet (Reddit posts younger than about 36 hours);
+- its score is in the top quarter of its source this week, or its source has fewer than 20 scored stories;
+- its title or head contains an interest keyword, ignoring case.
+
+Interest keywords come from `--keywords` (interests given in the call) or else from `interests.json` for `--project P`. Dropped stories leave `items.json` and the appendix; `status.json` keeps a per-source `dropped` count and the listing shows it. When keywords exist the listing gains a section of up to 30 interest matches, so low-score but relevant work stays in view. In W42 the top quarter meant 39 upvotes or more on HF (89 of 355) and a score of 53 or more on r/LocalLLaMA; DuplexJev (1 upvote) and Speech Event Detector (3) survive only through the keywords.
+
+## 12. Out of scope
 
 Interests for the `ai` skill; pinning or excluding topics (call interests override a run); merging folders or global interests; record folders that Claude Code shortens with a hash for very long paths, which the name rule cannot find; reading .docx or .pdf bodies; converting the messages of `weekly.py` and `check.py`.
