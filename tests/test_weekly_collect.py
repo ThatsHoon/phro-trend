@@ -109,6 +109,19 @@ class CollectTest(unittest.TestCase):
     def test_collect_all_fail(self):
         self.assertEqual(self.run_collect(get=always_fail)[0], 1)
 
+    def test_malformed_source_does_not_stop_collect(self):
+        good = make_get()
+
+        def get(url, headers=None):
+            return b'{"error": "rate limited"}' if "daily_papers" in url else good(url, headers)
+
+        code, _ = self.run_collect(get=get)
+        status = self.status()
+        self.assertEqual(code, 0)
+        self.assertFalse(status["hf_papers"]["ok"])
+        self.assertIn("AttributeError", status["hf_papers"]["error"])
+        self.assertTrue(status["hf_blog"]["ok"])
+
     def test_collect_reports_unscheduled_pull(self):
         _, printed = self.run_collect()
         self.assertEqual(self.status()["geeknews"]["error"], "쌓기 일정 미등록")

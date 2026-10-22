@@ -229,26 +229,39 @@ class Partial(Exception):
         self.items, self.reason = items, reason
 
 
-class _Redirect308(urllib.request.HTTPRedirectHandler):
-    """Follow 308 on Python 3.9 and 3.10 too (they only know 301, 302, 303, 307)."""
+def _reason(e: Exception) -> str:
+    """FetchError and ValueError already read as reasons; anything else (a source changing the shape of its
+    answer, a parser tripping on odd markup) names its type, so one bad source never stops the others."""
+    return (str(e) or type(e).__name__) if isinstance(e, (FetchError, ValueError)) else f"{type(e).__name__}: {e}"
 
-    http_error_308 = urllib.request.HTTPRedirectHandler.http_error_302
+
+MAX_HOPS = 5
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Hand every 3xx back to Fetcher.get, which checks robots.txt and pacing for the next host itself."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return super().redirect_request(req, fp, 307 if code == 308 else code, msg, headers, newurl)
+        return None
 
 
-def _urlopen(url: str, headers: dict) -> tuple[int, bytes]:
+def _urlopen(url: str, headers: dict) -> tuple[int, bytes, str | None]:
+    """One request, redirects not followed: (status, body, Location)."""
     req = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.build_opener(_Redirect308).open(req, timeout=60) as r:
-            return r.status, r.read(MAX_BYTES + 1)
+        with urllib.request.build_opener(_NoRedirect).open(req, timeout=60) as r:
+            return r.status, r.read(MAX_BYTES + 1), None
     except urllib.error.HTTPError as e:
-        return e.code, b""
+        return e.code, b"", e.headers.get("Location") if e.headers else None
+
+
+def _web(url: str) -> bool:
+    return urllib.parse.urlsplit(url).scheme in ("http", "https")
 
 
 class Fetcher:
-    """One polite client per run: honest User-Agent, robots.txt per host, pacing, retries on 429, 422 and 5xx."""
+    """One polite client per run: honest User-Agent, robots.txt per host and per redirect hop, pacing,
+    retries on 429, 422 and 5xx."""
 
     def __init__(self, opener=None, sleep=time.sleep, clock=time.monotonic):
         self.opener = opener or _urlopen
@@ -260,8 +273,13 @@ class Fetcher:
         u = urllib.parse.urlsplit(url)
         origin = f"{u.scheme}://{u.netloc}"
         if origin not in self.robots:
+            target = origin + "/robots.txt"
             try:
-                status, body = self.opener(origin + "/robots.txt", headers)
+                for _ in range(MAX_HOPS + 1):  # RFC 9309: follow at least five redirects for robots.txt
+                    status, body, location = self.opener(target, headers)
+                    if not (300 <= status < 400 and location) or not _web(urllib.parse.urljoin(target, location)):
+                        break
+                    target = urllib.parse.urljoin(target, location)
             except Exception:
                 raise FetchError("robots.txt 확인 실패") from None
             if status == 200:
@@ -275,7 +293,7 @@ class Fetcher:
         rp = self.robots[origin]
         return rp is None or rp.can_fetch("phro-trend", url)
 
-    def _paced(self, url: str, headers: dict) -> tuple[int, bytes]:
+    def _paced(self, url: str, headers: dict) -> tuple[int, bytes, str | None]:
         host = urllib.parse.urlsplit(url).hostname or ""
         gap = PACE.get(host, 0)
         if gap and host in self.last:
@@ -289,20 +307,30 @@ class Fetcher:
         finally:
             self.last[host] = self.clock()
 
+    def _retried(self, url: str, headers: dict) -> tuple[int, bytes, str | None]:
+        for delay in (*BACKOFF, None):
+            status, body, location = self._paced(url, headers)
+            if status not in RETRY:
+                return status, body, location
+            if delay is None:
+                raise FetchError(f"요청 제한({status})" if status in (429, 422) else f"HTTP {status}")
+            self.sleep(delay)
+
     def get(self, url: str, headers: dict | None = None) -> bytes:
         hdrs = {"User-Agent": UA, **(headers or {})}
-        if not self._robots_allow(url, hdrs):
-            raise FetchError("robots.txt가 막음")
-        for delay in (*BACKOFF, None):
-            status, body = self._paced(url, hdrs)
-            if status in RETRY:
-                if delay is None:
-                    raise FetchError(f"요청 제한({status})" if status in (429, 422) else f"HTTP {status}")
-                self.sleep(delay)
+        for _ in range(MAX_HOPS + 1):  # each redirect hop goes through robots.txt and pacing again
+            if not _web(url):
+                raise FetchError(f"http(s)가 아닌 주소: {url[:80]}")
+            if not self._robots_allow(url, hdrs):
+                raise FetchError("robots.txt가 막음")
+            status, body, location = self._retried(url, hdrs)
+            if 300 <= status < 400 and location:
+                url = urllib.parse.urljoin(url, location)
                 continue
-            if status >= 400:
+            if status >= 300:
                 raise FetchError(f"HTTP {status}")
             return body[:MAX_BYTES]
+        raise FetchError(f"넘겨주기가 {MAX_HOPS}번을 넘음")
 
 
 SOURCES = [  # (key, label, role, kind, arg); this order also picks the lead source when stories merge
@@ -468,23 +496,21 @@ def pull(home: Path, get, now: datetime) -> dict[str, int]:
         rows = [r for r in _read_jsonl(path)
                 if (parse_date(r.get("date")) or parse_date(r.get("fetched_at")) or now) >= cutoff]
         try:
-            entries = feed_entries(get(url))
-        except (FetchError, ValueError) as e:
-            log.append({"at": now.isoformat(), "feed": name, "ok": False, "error": str(e)})
+            known, new = {r.get("link") for r in rows}, []
+            for e in feed_entries(get(url)):
+                if not e["link"] or e["link"] in known:
+                    continue
+                known.add(e["link"])
+                text = html_text(e["html"])
+                new.append({"title": clean_title(e["title"]), "link": e["link"],
+                            "date": e["date"].isoformat() if e["date"] else None, "content": text[:5000],
+                            "links": _unique(hrefs(e["html"]) + urls_in(text)),
+                            "announce_type": e["extra"]["announce_type"], "fetched_at": now.isoformat()})
+        except Exception as e:  # one bad feed keeps its old rows and a log line; the other feed still runs
+            log.append({"at": now.isoformat(), "feed": name, "ok": False, "error": _reason(e)})
             result[name] = -1
             _write_jsonl(path, rows)
             continue
-        known = {r.get("link") for r in rows}
-        new = []
-        for e in entries:
-            if not e["link"] or e["link"] in known:
-                continue
-            known.add(e["link"])
-            text = html_text(e["html"])
-            new.append({"title": clean_title(e["title"]), "link": e["link"],
-                        "date": e["date"].isoformat() if e["date"] else None, "content": text[:5000],
-                        "links": _unique(hrefs(e["html"]) + urls_in(text)),
-                        "announce_type": e["extra"]["announce_type"], "fetched_at": now.isoformat()})
         _write_jsonl(path, rows + new)
         log.append({"at": now.isoformat(), "feed": name, "ok": True, "new": len(new)})
         result[name] = len(new)
@@ -679,8 +705,8 @@ def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, t
             st["ok"] = st["error"] is None
         except Partial as e:  # keep what arrived; the status says it is only part of the week
             got, st["ok"], st["error"] = e.items, True, f"일부만 받음: {e.reason}"
-        except (FetchError, ValueError) as e:
-            st["error"] = str(e) or type(e).__name__
+        except Exception as e:
+            st["error"] = _reason(e)
         st["count"] = len(got)
         items += got
         status[key] = st
@@ -762,8 +788,8 @@ def read(urls: list[str], out: Path, get, home: Path = HOME) -> list[Path]:
                 name, text = f"gh-{owner}-{name_}.md", body.decode("utf-8", "replace")
             else:
                 name, text = f"{_slug(url)}.txt", html_text(get(url).decode("utf-8", "replace"))
-        except (FetchError, ValueError) as e:
-            print(f"skip {url}: {e}")
+        except Exception as e:
+            print(f"skip {url}: {_reason(e)}")
             continue
         path = out / name
         path.write_text(f"source: {url}\n\n{text}"[:READ_LIMIT], encoding="utf-8")

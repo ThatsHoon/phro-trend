@@ -73,6 +73,12 @@ class ReadTest(unittest.TestCase):
         self.assertIn("skip https://news.hada.io/topic?id=2", printed)
         self.assertFalse(any("news.hada.io" in c for c in self.calls))
 
+    def test_malformed_answer_skips_only_that_url(self):
+        self.routes["https://arctic-shift.photon-reddit.com/api/posts/ids?ids=zzz999"] = b"[1, 2]"
+        paths, printed = self.read(["https://www.reddit.com/r/LocalLLaMA/comments/zzz999/t/", "https://example.com/post/1"])
+        self.assertEqual([p.name for p in paths], ["example-com-post-1.txt"])
+        self.assertIn("skip https://www.reddit.com/r/LocalLLaMA/comments/zzz999/t/", printed)
+
     def test_skip_on_fetch_error(self):
         def failing_get(url, headers=None):
             raise w.FetchError("robots.txt가 막음")

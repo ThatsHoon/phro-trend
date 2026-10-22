@@ -57,6 +57,15 @@ class PullTest(unittest.TestCase):
         self.assertEqual(w.gaps(hole, start, end), [(start + timedelta(days=2, hours=9), start + timedelta(days=3, hours=3))])
         self.assertEqual(w.gaps([], start, end), [(start, end)])
 
+    def test_pull_survives_a_malformed_feed(self):
+        bad = (b'<?xml version="1.0"?><rss><channel><item><title>x</title><link>https://news.hada.io/topic?id=9</link>'
+               b'<description>&lt;![foo[ x</description></item></channel></rss>')
+        result = w.pull(self.home, lambda url, headers=None: bad if "hada" in url else ATOM, NOW)
+        self.assertEqual(result["geeknews"], -1)
+        self.assertGreaterEqual(result["arxiv-eess-AS"], 0)
+        log = [json.loads(x) for x in (self.home / "pull" / "log.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertIn("AssertionError", next(r for r in log if r["feed"] == "geeknews")["error"])
+
     def test_launcher_runs_newest_install_that_has_weekly(self):
         user, marker = self.home / "user", self.home / "ran.txt"
         cache = user / ".claude" / "plugins" / "cache" / "phro" / "phro-trend"

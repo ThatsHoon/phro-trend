@@ -76,10 +76,11 @@ def reading_minutes(html):
 
 def check_style(html):
     bad = []
+    shown = htmllib.unescape(html)  # entities such as &ndash; reach the reader as the characters themselves
     for ch, name in (("\u2014", "em dash"), ("\u2013", "en dash")):
-        if ch in html:
-            bad.append(f"{name} x{html.count(ch)}")
-    symbols = sorted(set(DECOR.findall(_drop(r"<script\b.*?</script>", html))))
+        if ch in shown:
+            bad.append(f"{name} x{shown.count(ch)}")
+    symbols = sorted(set(DECOR.findall(htmllib.unescape(_drop(r"<script\b.*?</script>", html)))))
     if symbols:
         bad.append(f"emoji or symbol: {symbols}")
     text = style_text(html)

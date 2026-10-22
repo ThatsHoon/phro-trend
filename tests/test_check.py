@@ -34,6 +34,12 @@ class StyleTest(unittest.TestCase):
     def test_clean_text_passes(self):
         self.assertEqual(check.check_style(page("<p>" + KO * 20 + "</p>")), [])
 
+    def test_entity_dash_and_emoji(self):
+        msgs = check.check_style(page("<p>" + KO * 20 + "</p><p>3&ndash;5 &#x1F680; 10&mdash;20</p>"))
+        self.assertTrue(any("en dash" in m for m in msgs), msgs)
+        self.assertTrue(any("em dash" in m for m in msgs), msgs)
+        self.assertTrue(any("emoji" in m for m in msgs), msgs)
+
     def test_hard_phrase(self):
         self.assertTrue(any("결론적으로" in m for m in check.check_style(page("<p>결론적으로 좋다.</p>"))))
 
