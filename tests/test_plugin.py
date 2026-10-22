@@ -20,8 +20,16 @@ class PluginTest(unittest.TestCase):
 
     def test_interests_never_drop_big_changes(self):
         text = (ROOT / "skills/weekly/SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("관심사는 무게를 더할 뿐 거르지 않는다", text)
-        self.assertIn("관심사 밖의 큰 변화", text)
+        self.assertIn("Interests add weight and never filter", text)
+        self.assertIn("big changes outside the interests", text)
+
+    def test_weekly_refreshes_interests_first(self):
+        text = (ROOT / "skills/weekly/SKILL.md").read_text(encoding="utf-8")
+        for needle in ("interest.py show", "refresh due", "--project", "--keywords", "관심사(자동"):
+            self.assertIn(needle, text)
+
+    def test_version_is_030(self):
+        self.assertEqual(load("skills/weekly/scripts/weekly.py").VERSION, "0.3.0")
 
     def test_constants_agree(self):
         c, w = load("scripts/check.py"), load("skills/weekly/scripts/weekly.py")

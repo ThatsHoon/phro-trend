@@ -30,7 +30,7 @@ from datetime import date, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 
-VERSION = "0.2.2"
+VERSION = "0.3.0"
 UA = f"phro-trend/{VERSION} (+https://github.com/ThatsHoon/phro-trend)"
 HOME = Path.home() / ".claude" / "phro-trend"
 STAGES = ["모델 공개", "데이터", "학습", "평가", "경량화·추론", "응용"]

@@ -10,7 +10,7 @@ import html as htmllib, re, sys
 SECTIONS = ["한 줄로", "기존에는", "무엇이 문제였나", "이 논문은 이렇게 바꿨다",
             "얼마나 좋아졌나", "어디에 쓰면 좋나", "예시", "바로 써보려면"]
 
-# One hit fails (STYLE.md "바로 실패하는 것"). Model names used as paper baselines are fine.
+# One hit fails (STYLE.md "Fails on one hit"). Model names used as paper baselines are fine.
 HARD_PHRASES = ["Generated with", "Co-Authored-By", "Written by Claude", "Claude가 작성", "AI가 작성",
                 "AI 요약", "AI-generated", "as an AI", "언어 모델로서", "ai_summary",
                 "알아보겠습니다", "살펴보겠습니다", "알아봅시다", "살펴봅시다", "소개해 드리겠습니다", "소개하겠습니다",
@@ -18,7 +18,7 @@ HARD_PHRASES = ["Generated with", "Co-Authored-By", "Written by Claude", "Claude
                 "혁신적", "획기적", "게임 체인저", "게임체인저", "판도를 바꾸", "패러다임 전환", "새로운 지평",
                 "되어지", "되어진"]
 DECOR = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27bf\u25a0-\u25ff\u2b00-\u2bff\ufe0f]")
-# Natural words that read machine-made only when they pile up (STYLE.md "몰리면 실패하는 것").
+# Natural words that read machine-made only when they pile up (STYLE.md "Fails when they pile up").
 DENSITY = {  # 이름: (표현들, 본문 1000자당 최대 횟수)
     "번역투": (["를 통해", "을 통해", "에 대해", "에 대한", "에 있어", "함으로써"], 4.0),
     "빈 수식어": (["다양한", "효과적", "효율적", "강력한", "원활한", "최적의", "중요한 역할"], 2.0),
