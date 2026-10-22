@@ -1,4 +1,4 @@
-import json, os, re, tempfile, time, unittest
+import contextlib, io, json, os, re, tempfile, time, unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tests._load import load
@@ -24,7 +24,7 @@ def folder(path):
     return re.sub(r"[^A-Za-z0-9]", "-", str(path))
 
 
-class SessionTest(unittest.TestCase):
+class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name).resolve()
@@ -48,6 +48,8 @@ class SessionTest(unittest.TestCase):
     def titles(self):
         return {s["title"] for s in i.sessions(self.claude, self.project, SINCE)[0]}
 
+
+class SessionTest(Base):
     def test_clean_prompt(self):
         self.assertEqual(i.clean_prompt("<system-reminder>x</system-reminder>hello"), "hello")
         self.assertEqual(i.clean_prompt('<pasted_content id="a">secret</pasted_content> do it'), "do it")
@@ -120,6 +122,72 @@ class SessionTest(unittest.TestCase):
         self.record("m", [title("main"), user("hello", "u1")])
         upper = Path(str(self.project).upper().replace("\\", "/"))
         self.assertEqual(i.sessions(self.claude, upper, SINCE)[0], i.sessions(self.claude, self.project, SINCE)[0])
+
+
+def fake_session(n):
+    return {"title": f"session {n}", "last": NOW, "prompts": ["p" * 160] * 8, "summary": "s" * 600}
+
+
+class GatherTest(Base):
+    def write(self, rel, text="", age_days=0, size=None):
+        path = self.project / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x" * size if size else text.encode("utf-8"))
+        when = time.time() - age_days * 86400
+        os.utime(path, (when, when))
+        return path
+
+    def lines(self):
+        return i.documents(self.project, datetime.now(timezone.utc) - timedelta(days=14))[0]
+
+    def test_doc_lines(self):
+        self.write("a.md", chr(10).join(["# Title", "## Part", "### Sub", "## Four", ""]))
+        self.write("b.html", "<html><head><title>T</title></head><body><h1>H</h1></body></html>")
+        self.write("c.pdf", "%PDF")
+        lines = self.lines()
+        self.assertIn("a.md: Title; Part; Sub", lines)
+        self.assertIn("b.html: T; H", lines)
+        self.assertIn("c.pdf", lines)
+
+    def test_doc_exclusions(self):
+        for rel in (".git/x.md", "node_modules/x.md", "__pycache__/x.md", "venv/x.md", "trend-weekly/x.html", "trend-papers/x.html"):
+            self.write(rel, "# hidden")
+        self.write("page.html", '<html><head><meta name="phro-kind" content="weekly"><title>W</title></head></html>')
+        self.write("old.md", "# old", age_days=30)
+        self.write("big.md", size=3_000_000)
+        self.write("notes.py", "# not a document")
+        self.assertEqual(self.lines(), [])
+
+    def test_folder_folding(self):
+        for n in range(25):
+            self.write(f"data/{n}.txt", "row")
+        self.assertEqual(self.lines(), ["data/ (25 files)"])
+
+    def test_doc_limit_newest_first(self):
+        for n in range(70):
+            self.write(f"d{n // 10}/f{n % 10}.md", f"# T{n}", age_days=(70 - n) / 1000)
+        lines = self.lines()
+        self.assertEqual(len(lines), 60)
+        self.assertEqual(lines[0], "d6/f9.md: T69")
+
+    def test_render_budget(self):
+        text = i.render([fake_session(n) for n in range(12)], [f"doc{n}.md: " + "x" * 200 for n in range(100)])
+        self.assertLessEqual(len(text), 10_000)
+        self.assertTrue(all(f"## session {n} (" in text for n in range(12)))
+        self.assertIn("- " + "p" * 20, text)  # prompts survive a long summary
+        self.assertIn("doc0.md", text)
+
+    def test_gather_exit_codes(self):
+        empty = self.project.parent / "empty"
+        empty.mkdir()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(i.main(["gather", "--project", str(empty), "--claude-dir", str(self.claude)]), 1)
+        self.write("a.md", "# A")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(i.main(["gather", "--project", str(self.project), "--claude-dir", str(self.claude)]), 0)
+        last = out.getvalue().splitlines()[-1]
+        self.assertTrue(last.startswith("sessions 0, prompts 0, documents 1, skipped 0, "), last)
 
 
 if __name__ == "__main__":
