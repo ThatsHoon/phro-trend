@@ -1,4 +1,4 @@
-import json, sys, tempfile, unittest
+import json, os, subprocess, sys, tempfile, unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tests._load import load
@@ -56,6 +56,27 @@ class PullTest(unittest.TestCase):
         hole = [t for t in every12 if not (start + timedelta(days=2, hours=9) < t < start + timedelta(days=4, hours=9))]
         self.assertEqual(w.gaps(hole, start, end), [(start + timedelta(days=2, hours=9), start + timedelta(days=3, hours=3))])
         self.assertEqual(w.gaps([], start, end), [(start, end)])
+
+    def test_launcher_runs_newest_install_that_has_weekly(self):
+        user, marker = self.home / "user", self.home / "ran.txt"
+        cache = user / ".claude" / "plugins" / "cache" / "phro" / "phro-trend"
+        (cache / "0.1.1" / "skills" / "ai").mkdir(parents=True)  # an install from before the weekly skill
+
+        def plant(root, tag):
+            script = root / "skills" / "weekly" / "scripts" / "weekly.py"
+            script.parent.mkdir(parents=True)
+            script.write_text(f"import pathlib, sys; pathlib.Path({str(marker)!r}).write_text({tag!r} + ' ' + sys.argv[1], "
+                              "encoding='utf-8')", encoding="utf-8")
+
+        plant(self.home / "plug", "fallback")
+        w.schedule(self.home, sys.executable, self.home / "plug", platform="nt")
+        env = dict(os.environ, HOME=str(user), USERPROFILE=str(user))
+        run = lambda: subprocess.run([sys.executable, "-I", str(self.home / "pull_launcher.py")], env=env).returncode
+        self.assertEqual(run(), 0)
+        self.assertEqual(marker.read_text(encoding="utf-8"), "fallback pull")
+        plant(cache / "0.2.0", "cache")
+        self.assertEqual(run(), 0)
+        self.assertEqual(marker.read_text(encoding="utf-8"), "cache pull")
 
     def test_schedule_writes_launcher(self):
         cmd = w.schedule(self.home, sys.executable, Path("C:/plug"), platform="nt")

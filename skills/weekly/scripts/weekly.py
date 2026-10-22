@@ -518,6 +518,7 @@ import pathlib, subprocess, sys
 
 CACHE = pathlib.Path.home() / ".claude" / "plugins" / "cache" / "phro" / "phro-trend"
 FALLBACK = pathlib.Path(r"{plugin_root}")
+SCRIPT = pathlib.Path("skills", "weekly", "scripts", "weekly.py")
 
 
 def version(p):
@@ -527,9 +528,9 @@ def version(p):
         return (-1,)
 
 
-roots = [p for p in CACHE.iterdir() if p.is_dir()] if CACHE.is_dir() else []
+roots = [p for p in CACHE.iterdir() if (p / SCRIPT).is_file()] if CACHE.is_dir() else []  # older installs lack weekly
 root = max(roots, key=version) if roots else FALLBACK
-sys.exit(subprocess.call([sys.executable, "-I", str(root / "skills" / "weekly" / "scripts" / "weekly.py"), "pull"]))
+sys.exit(subprocess.call([sys.executable, "-I", str(root / SCRIPT), "pull"]))
 '''
 
 
