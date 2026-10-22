@@ -6,7 +6,7 @@ KO = "이 방법은 긴 문서를 다룰 때 필요한 쪽만 골라 넣어서 �
 SLOTS = ["무엇이 달라졌나", "어디까지 믿나", "적용 고리", "해보려면"]
 
 
-def weekly_page(slots=None, label="시험해 볼 것", themes=2, list_outside=False, minutes_off=0, story_link=True,
+def weekly_page(slots=None, label="시험해 볼 것", themes=2, list_outside=False, flow_repeat=2, story_link=True,
                 drop_item_label=False):
     stories = []
     for i in range(1, 4):
@@ -29,7 +29,6 @@ def weekly_page(slots=None, label="시험해 볼 것", themes=2, list_outside=Fa
     extra_list = "<ul><li>목록</li></ul>" if list_outside else ""
     body = f"""<main>
 <h1>2026년 42주차 AI 소식</h1>
-<p class="meta">10.12~10.18 · 읽는 데 약 MINUTES분 · 훑은 글 500개 중 13개 · 소스 12곳</p>
 <section id="glance">
 <h2>이번 주 한눈에</h2>
 <p><a href="#s1">{KO}</a></p>
@@ -38,7 +37,7 @@ def weekly_page(slots=None, label="시험해 볼 것", themes=2, list_outside=Fa
 <pre class="mermaid">
 flowchart LR
   M["모델 공개"] --> T["학습 ① ② ③"]
-  classDef hot fill:#d6f5e0,stroke:#1f8a4c
+  classDef hot fill:#1f8a4c,stroke:#145c33,color:#ffffff
 </pre>
 <p class="legend muted">바로 써 볼 것은 지금 구조에 넣어 볼 만한 것, 시험해 볼 것은 작은 실험으로 확인할 것, 지켜볼 것은 아직 이르지만 알아 둘 흐름이다.</p>
 </section>
@@ -52,7 +51,7 @@ flowchart LR
 </section>
 <section id="flow">
 <h2>흐름</h2>
-<p>{KO * 2}</p>{extra_list}
+<p>{KO * flow_repeat}</p>{extra_list}
 </section>
 <section id="try">
 <h2>이번 주 해볼 것 하나</h2>
@@ -69,5 +68,4 @@ flowchart LR
 </main>"""
     head = ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="phro-kind" content="weekly">'
             '<meta name="phro-week" content="2026-W42"><title>주간 AI 소식 2026-W42</title></head><body>')
-    page = head + body + "</body></html>"
-    return page.replace("MINUTES", str(check.reading_minutes(page.replace("MINUTES", "0")) + minutes_off))
+    return head + body + "</body></html>"

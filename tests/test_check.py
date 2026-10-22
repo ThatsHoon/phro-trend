@@ -70,9 +70,6 @@ class StyleTest(unittest.TestCase):
         self.assertEqual(check.check_style(page('<p class="item"><strong>결과.</strong> 설명.</p>' * 5)), [])
         self.assertTrue(any("굵은" in m for m in check.check_style(page("<p><strong>a</strong></p>" * 4))))
 
-    def test_reading_minutes(self):
-        self.assertEqual(check.reading_minutes(page("<p>" + "가" * 1001 + "</p>")), 3)
-
     def test_style_md_lists_every_rule(self):
         text = (ROOT / "STYLE.md").read_text(encoding="utf-8")
         words = check.HARD_PHRASES + [w for ws, _ in check.DENSITY.values() for w in ws] + check.OPENERS
@@ -90,6 +87,8 @@ class WeeklyTest(unittest.TestCase):
         t = (ROOT / "skills/weekly/assets/template.html").read_text(encoding="utf-8")
         self.assertEqual(check.kind_of(t), "weekly")
         self.assertEqual(re.findall(r"<h4>(.*?)</h4>", t)[:4], check.SLOTS)
+        self.assertNotIn('class="meta"', t)  # no header line: period, reading time and counts are noise
+        self.assertRegex(t, r"classDef hot [^\n]*color:#ffffff")  # dark fill, white text: readable in both themes
 
     def test_failures(self):
         cases = [
@@ -99,7 +98,7 @@ class WeeklyTest(unittest.TestCase):
             ("brief", weekly_page(themes=5)),
             ("brief", weekly_page(drop_item_label=True)),
             ("list outside appendix", weekly_page(list_outside=True)),
-            ("reading time", weekly_page(minutes_off=3)),
+            ("body", weekly_page(flow_repeat=120)),
         ]
         for want, page in cases:
             self.assertTrue(any(m.startswith(want) for m in check.check(page)), want)

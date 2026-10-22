@@ -5,7 +5,7 @@ The kind comes from <meta name="phro-kind" content="ai|weekly">; pages without i
 The style lists below are the ones STYLE.md explains to the writer; keep the two in step.
 Exit 1 and list problems if anything fails.
 """
-import html as htmllib, math, re, sys
+import html as htmllib, re, sys
 
 SECTIONS = ["한 줄로", "기존에는", "무엇이 문제였나", "이 논문은 이렇게 바꿨다",
             "얼마나 좋아졌나", "어디에 쓰면 좋나", "예시", "바로 써보려면"]
@@ -38,6 +38,7 @@ EVIDENCE = ["논문 주장", "코드 공개", "재현 후기 있음"]
 SLOTS = ["무엇이 달라졌나", "어디까지 믿나", "적용 고리", "해보려면"]
 WEEKLY_PARTS = ['<section id="glance"', '<section id="top"', '<section id="brief"',
                 '<section id="flow"', '<section id="try"', '<details id="appendix"']
+MAX_BODY = 5000  # 본문 글자 수(공백 제외) 상한: 분당 500자로 10분
 
 
 def kind_of(html):
@@ -68,10 +69,6 @@ def style_text(html):
 
 def _nonspace(s):
     return len(re.sub(r"\s", "", s))
-
-
-def reading_minutes(html):
-    return math.ceil(_nonspace(style_text(html)) / 500)
 
 
 def check_style(html):
@@ -202,12 +199,9 @@ def check_weekly(html):
             bad.append(f"{sid}: empty")
     if re.search(r"<[uo]l[\s>]", re.sub(r'<details id="appendix".*?</details>', "", html, flags=re.S)):
         bad.append("list outside appendix: write prose")
-    meta = re.search(r'<p class="meta"[^>]*>(.*?)</p>', html, flags=re.S)
-    said = re.search(r"읽는 데 약 (\d+)분", _plain(meta.group(1))) if meta else None
-    if not said:
-        bad.append("reading time: header needs 읽는 데 약 N분")
-    elif abs(int(said.group(1)) - reading_minutes(html)) > 1:
-        bad.append(f"reading time: header says {said.group(1)}분, the text reads in about {reading_minutes(html)}분")
+    n = _nonspace(style_text(html))
+    if n > MAX_BODY:
+        bad.append(f"body: 본문 {n}자, {MAX_BODY}자 안으로 줄인다")
     return bad
 
 
