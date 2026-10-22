@@ -35,7 +35,7 @@ STAGES = ["모델 공개", "데이터", "학습", "평가", "경량화·추론",
 LABELS = ["바로 써 볼 것", "시험해 볼 것", "지켜볼 것"]
 EVIDENCE = ["논문 주장", "코드 공개", "재현 후기 있음"]
 
-DECOR = re.compile("[\U0001F000-\U0001FAFF☀-➿■-◿⬀-⯿️]")
+DECOR = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27bf\u25a0-\u25ff\u2b00-\u2bff\ufe0f]")
 ATOM = "{http://www.w3.org/2005/Atom}"
 CONTENT = "{http://purl.org/rss/1.0/modules/content/}encoded"
 DC_DATE = "{http://purl.org/dc/elements/1.1/}date"
@@ -167,7 +167,7 @@ def urls_in(text: str) -> list[str]:
 
 
 def clean_title(s: str) -> str:
-    s = (s or "").replace("—", "-").replace("–", "-")
+    s = (s or "").replace("\u2014", "-").replace("\u2013", "-")
     return re.sub(r"\s+", " ", DECOR.sub("", s)).strip()
 
 

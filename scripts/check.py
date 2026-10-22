@@ -17,7 +17,7 @@ HARD_PHRASES = ["Generated with", "Co-Authored-By", "Written by Claude", "Claude
                 "결론적으로", "요약하자면", "정리하자면", "귀추가 주목", "앞으로가 기대",
                 "혁신적", "획기적", "게임 체인저", "게임체인저", "판도를 바꾸", "패러다임 전환", "새로운 지평",
                 "되어지", "되어진"]
-DECOR = re.compile("[\U0001F000-\U0001FAFF☀-➿■-◿⬀-⯿️]")
+DECOR = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27bf\u25a0-\u25ff\u2b00-\u2bff\ufe0f]")
 # Natural words that read machine-made only when they pile up (STYLE.md "몰리면 실패하는 것").
 DENSITY = {  # 이름: (표현들, 본문 1000자당 최대 횟수)
     "번역투": (["를 통해", "을 통해", "에 대해", "에 대한", "에 있어", "함으로써"], 4.0),
@@ -76,7 +76,7 @@ def reading_minutes(html):
 
 def check_style(html):
     bad = []
-    for ch, name in (("—", "em dash"), ("–", "en dash")):
+    for ch, name in (("\u2014", "em dash"), ("\u2013", "en dash")):
         if ch in html:
             bad.append(f"{name} x{html.count(ch)}")
     symbols = sorted(set(DECOR.findall(_drop(r"<script\b.*?</script>", html))))
