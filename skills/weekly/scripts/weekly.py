@@ -16,6 +16,7 @@ import email.utils
 import hashlib
 import html as htmllib
 import json
+import math
 import os
 import re
 import sys
@@ -602,6 +603,10 @@ def schedule(home: Path, python_exe: str, plugin_root: Path, platform: str = os.
 ORDER = {key: i for i, (key, *_) in enumerate(SOURCES)}
 LIST_CAPS = {"hf_papers": 40, "r_localllama": 20, "r_machinelearning": 20, "pytorchkr": 20, "geeknews": 40, "arxiv_eess_as": 40}
 BY_SCORE = {"hf_papers", "r_localllama", "r_machinelearning", "pytorchkr"}
+SCORED = {"hf_papers", "r_localllama", "r_machinelearning"}  # PyTorchKR likes are mostly 0 to 2: no signal
+KEEP_SHARE = 0.25  # a scored source keeps its top quarter
+KEEP_MIN = 20  # below this many scored stories a source keeps them all
+MATCH_CAP = 30
 UNSCHEDULED = "쌓기 일정 미등록"
 
 
@@ -668,20 +673,24 @@ def listing(stories: list[dict], status: dict, week: str, start: datetime, end: 
     warn, fine = [], []
     for st in status.values():
         name = st["label"]
+        drop = f", 인기 하위 {st['dropped']}개 뺌" if st.get("dropped") else ""
         if not st["ok"]:
             warn.append(f"{name}: {UNSCHEDULED}" if st["error"] == UNSCHEDULED else f"{name}: 실패 ({st['error']})")
         elif st["error"]:
-            warn.append(f"{name}: {st['count']}개, {st['error']}")
+            warn.append(f"{name}: {st['count']}개, {st['error']}{drop}")
         elif st["gaps"]:
             tz = start.tzinfo
             spans = ", ".join(f"{parse_date(a).astimezone(tz):%m-%d %H}시~{parse_date(b).astimezone(tz):%m-%d %H}시"
                               for a, b in st["gaps"])
-            warn.append(f"{name}: {st['count']}개, 빈 구간 {spans}")
+            warn.append(f"{name}: {st['count']}개{drop}, 빈 구간 {spans}")
         else:
-            fine.append(f"{name}: {st['count']}개")
+            fine.append(f"{name}: {st['count']}개{drop}")
     lines += warn + fine
     multi = sorted((s for s in stories if s["n_sources"] >= 2), key=lambda s: (-s["n_sources"], -(s["score"] or 0)))
     lines += ["", "== 여러 곳에서 나온 소식 =="] + [_row(s) for s in multi[:40]]
+    matched = sorted((s for s in stories if s.get("match")), key=lambda s: (s["score"] is None, -(s["score"] or 0)))
+    if matched:
+        lines += ["", "== 관심사에 맞는 글 =="] + [_row(s) for s in matched[:MATCH_CAP]]
     for key, label, *_ in SOURCES:
         own = [s for s in stories if s["source"] == key]
         if not own:
@@ -692,6 +701,32 @@ def listing(stories: list[dict], status: dict, week: str, start: datetime, end: 
             own.sort(key=_when, reverse=True)
         lines += ["", f"== {label} ({len(own)}) =="] + [_row(s) for s in own[:LIST_CAPS.get(key, len(own))]]
     return "\n".join(lines)
+
+
+def prefilter(stories: list[dict], keywords: list[str]) -> tuple[list[dict], dict[str, int]]:
+    """Keep multi-source, unscored, top-quarter and interest-matching stories; count the rest per source."""
+    words = [k.lower() for k in keywords if k.strip()]
+    cut = {}
+    for key in SCORED:
+        scores = sorted((s["score"] for s in stories if s["source"] == key and s["score"] is not None), reverse=True)
+        if len(scores) >= KEEP_MIN:
+            cut[key] = scores[max(1, math.ceil(len(scores) * KEEP_SHARE)) - 1]
+    kept, dropped = [], {}
+    for s in stories:
+        if words and any(w in f"{s['title']} {s.get('head') or ''}".lower() for w in words):
+            s["match"] = True
+        if (s.get("match") or s["n_sources"] >= 2 or s["source"] not in cut or s["score"] is None
+                or s["score"] >= cut[s["source"]]):
+            kept.append(s)
+        else:
+            dropped[s["source"]] = dropped.get(s["source"], 0) + 1
+    return kept, dropped
+
+
+def _interest_keywords(home: Path, project: Path) -> list[str]:
+    """Keywords phro-trend:interest stored for this folder, under the same key rule as interest.py."""
+    entry = _load_json(Path(home) / "interests.json").get(os.path.normcase(str(Path(project).resolve()))) or {}
+    return [k for x in entry.get("interests", []) for k in x.get("keywords", [])]
 
 
 def _load_json(path: Path) -> dict:
@@ -712,7 +747,8 @@ def _pull_trouble(home: Path, name: str) -> str:
     return f"최근 쌓기 {len(failed)}회 모두 실패, 마지막 이유: {failed[-1].get('error')}"
 
 
-def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, today: date | None = None) -> int:
+def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, today: date | None = None,
+            project: Path | None = None, keywords: list[str] | None = None) -> int:
     tz = tz or datetime.now().astimezone().tzinfo
     week = week or last_finished_week(today or date.today())
     start, end = week_bounds(week, tz)
@@ -758,6 +794,14 @@ def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, t
             print(f"경고: {e}. 이번 목록에는 그 기록의 표시가 빠진다.")
             records.append({})
     mark_covered(stories, *records, week)
+    if keywords is None and project is not None:
+        try:
+            keywords = _interest_keywords(home, project)
+        except ValueError as e:
+            print(f"경고: {e}. 관심사 키워드 없이 거른다.")
+    stories, dropped = prefilter(stories, keywords or [])
+    for key, st in status.items():
+        st["dropped"] = dropped.get(key, 0)
     payload = {"week": week, "start": start.isoformat(), "end": end.isoformat(),
                "collected_at": datetime.now(tz).isoformat(), "stories": stories}
     (out / "items.json").write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -890,6 +934,8 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("collect")
     c.add_argument("--week", help="YYYY-Www, default the last finished week")
     c.add_argument("--out", required=True)
+    c.add_argument("--project", help="folder the session started in; its stored interest keywords rescue low scores")
+    c.add_argument("--keywords", nargs="+", help="interest keywords given in the call (win over the stored ones)")
     sub.add_parser("pull")
     sub.add_parser("schedule")
     r = sub.add_parser("read")
@@ -900,7 +946,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     home = Path(args.home)
     if args.cmd == "collect":
-        return collect(args.week, Path(args.out), home=home)
+        return collect(args.week, Path(args.out), home=home, project=Path(args.project) if args.project else None,
+                       keywords=args.keywords)
     if args.cmd == "read":
         read(args.urls, Path(args.out), Fetcher().get, home)
         return 0

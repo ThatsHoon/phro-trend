@@ -1,4 +1,4 @@
-import contextlib, io, json, tempfile, unittest
+import contextlib, io, json, os, tempfile, unittest
 from datetime import date, timedelta, timezone
 from pathlib import Path
 from tests._load import load
@@ -15,8 +15,8 @@ def item(source, url, ident=None, score=None, links=()):
             "links": list(links), "ident": ident or w.ident(url)}
 
 
-def paper(pid):
-    return {"paper": {"id": pid, "title": f"Paper {pid}", "upvotes": 50, "summary": "abstract",
+def paper(pid, upvotes=50, title=None):
+    return {"paper": {"id": pid, "title": title or f"Paper {pid}", "upvotes": upvotes, "summary": "abstract",
                       "submittedOnDailyAt": "2026-10-13T00:00:00.000Z"}, "numComments": 0}
 
 
@@ -25,13 +25,14 @@ def rss(title, when, html=""):
             f'<pubDate>{when}</pubDate><description>{html}</description></item></channel></rss>').encode()
 
 
-def make_get(fail=(), reddit_pages=None):
+def make_get(fail=(), reddit_pages=None, hf=None):
     end_ts = int(END.timestamp())
     one_post = [{"id": "r1", "title": "Discussion", "score": 300, "num_comments": 40, "created_utc": end_ts - 3600,
                  "permalink": "/r/LocalLLaMA/comments/r1/x/", "url": "https://arxiv.org/abs/2610.14224",
                  "selftext": "", "_meta": {"retrieved_2nd_on": end_ts}}]
     routes = {
-        "https://huggingface.co/api/daily_papers?week=2026-W42&limit=100&p=0": json.dumps([paper("2610.14224"), paper("2610.99999")]).encode(),
+        "https://huggingface.co/api/daily_papers?week=2026-W42&limit=100&p=0": json.dumps(
+            hf if hf is not None else [paper("2610.14224"), paper("2610.99999")]).encode(),
         "https://huggingface.co/blog/feed.xml": rss("blog-post", "Tue, 13 Oct 2026 01:00:00 GMT"),
         "https://magazine.sebastianraschka.com/feed": EMPTY_RSS,
         "https://nlp.elvissaravia.com/feed": rss("papers-of-the-week", "Sat, 17 Oct 2026 01:00:00 GMT",
@@ -59,6 +60,22 @@ def make_get(fail=(), reddit_pages=None):
     return get
 
 
+def story(sid, source, score, title=None, n_sources=1):
+    return {"id": sid, "source": source, "score": score, "n_sources": n_sources, "title": title or sid, "head": ""}
+
+
+def hf(sid, score, title=None, n_sources=1):
+    return story(sid, "hf_papers", score, title, n_sources)
+
+
+def rd(sid, score):
+    return story(sid, "r_localllama", score)
+
+
+def blog(sid):
+    return story(sid, "hf_blog", None)
+
+
 def always_fail(url, headers=None):
     raise w.FetchError("HTTP 503")
 
@@ -73,10 +90,10 @@ class CollectTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_collect(self, week="2026-W42", get=None, today=None):
+    def run_collect(self, week="2026-W42", get=None, today=None, **kw):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            code = w.collect(week, self.out, get=get or make_get(), tz=KST, home=self.home, today=today)
+            code = w.collect(week, self.out, get=get or make_get(), tz=KST, home=self.home, today=today, **kw)
         return code, buf.getvalue()
 
     def status(self):
@@ -178,6 +195,50 @@ class CollectTest(unittest.TestCase):
         self.assertEqual(s["2610.14224"]["covered_ai"], "2026-10-21")
         self.assertEqual(s["2610.99999"]["covered_weekly"], "2026-W41")
         self.assertIn("[W41]", printed)
+
+    def test_prefilter_rules(self):
+        stories = [hf(f"hf{n}", n) for n in range(1, 41)] + [hf("speech", 2, title="Speech decisions without decoding"),
+                   hf("multi", 1, n_sources=2), rd("new", None), blog("b")]
+        kept, dropped = w.prefilter(stories, ["speech"])
+        self.assertEqual({s["id"] for s in kept}, {f"hf{n}" for n in range(30, 41)} | {"speech", "multi", "new", "b"})
+        self.assertEqual(dropped, {"hf_papers": 29})
+        self.assertTrue(next(s for s in kept if s["id"] == "speech")["match"])
+
+    def test_prefilter_small_source_keeps_all(self):
+        kept, dropped = w.prefilter([hf(f"hf{n}", n) for n in range(1, 20)], [])
+        self.assertEqual((len(kept), dropped), (19, {}))
+
+    def hf_rows(self):
+        return [paper(f"2610.{n:05d}", upvotes=n, title="Speech event detector" if n == 2 else None) for n in range(1, 31)]
+
+    def test_collect_drops_and_lists_matches(self):
+        code, printed = self.run_collect(get=make_get(hf=self.hf_rows()), keywords=["speech"])
+        self.assertEqual(code, 0)
+        self.assertEqual(self.status()["hf_papers"]["dropped"], 21)
+        self.assertIn("인기 하위 21개 뺌", printed)
+        self.assertIn("== 관심사에 맞는 글 ==", printed)
+        self.assertIn("Speech event detector", printed.split("== 관심사에 맞는 글 ==")[1])
+        self.assertNotIn("2610.00001", self.stories())
+        self.assertIn("2610.00002", self.stories())
+
+    def interest_store(self, text):
+        project = Path(self.tmp.name) / "proj"
+        project.mkdir(exist_ok=True)
+        (self.home / "interests.json").write_text(text(os.path.normcase(str(project.resolve()))), encoding="utf-8")
+        return project
+
+    def test_collect_uses_interest_store(self):
+        project = self.interest_store(lambda key: json.dumps({key: {"week": "2026-W43", "updated": "", "interests": [
+            {"topic": "t", "keywords": ["speech", "asr"], "why": "w"}]}}))
+        _, printed = self.run_collect(get=make_get(hf=self.hf_rows()), project=project)
+        self.assertIn("== 관심사에 맞는 글 ==", printed)
+
+    def test_collect_broken_interest_store(self):
+        project = self.interest_store(lambda key: "{oops")
+        code, printed = self.run_collect(get=make_get(hf=self.hf_rows()), project=project)
+        self.assertEqual(code, 0)
+        self.assertIn("interests.json", printed)
+        self.assertNotIn("== 관심사에 맞는 글 ==", printed)
 
     def test_default_week(self):
         self.run_collect(week=None, today=date(2026, 10, 22))
