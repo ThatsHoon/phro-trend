@@ -28,9 +28,9 @@ Group by story, not by source. The same story on HF, Reddit and a newsletter is 
    ```bash
    python -I ${CLAUDE_PLUGIN_ROOT}/skills/weekly/scripts/weekly.py collect --out <work folder> --project <P> [--week YYYY-Www] [--keywords K ...]
    ```
-   When the call gives interests, pass them as `--keywords` written as English news terms (음성 becomes speech and ASR), since titles are mostly English; they add to the stored keywords. Without a week it uses the last finished week. The screen shows the source status (warnings first), stories from several places, interest matches and the top stories per source. `items.json` holds every kept story and `status.json` each source's result. When the status shows "쌓기 일정 미등록", read "Pull schedule" below first.
+   When the call gives interests, pass them as `--keywords` written as English news terms (음성 becomes speech and ASR), since titles are mostly English; they add to the stored keywords. Without a week it uses the last finished week. The screen shows the source status (warnings first), stories from several places, interest matches and the top stories per source. `items.json` holds every kept story and `status.json` each source's result. When the status shows "pull schedule not registered", read "Pull schedule" below first.
 
-   Collect drops low-popularity stories first. It keeps a story that came from two or more places, comes from a source without a usable score, has no score yet, sits in the top quarter of its source, or matches an interest keyword. Source lines show what was dropped ("인기 하위 N개 뺌"). The "== 관심사에 맞는 글 ==" section lists the matches whatever their score; a low score there is no reason to skip a story.
+   Collect drops low-popularity stories first. It keeps a story that came from two or more places, comes from a source without a usable score, has no score yet, sits in the top quarter of its source, or matches an interest keyword. Source lines show what was dropped ("dropped N low-popularity"). The "== interest matches ==" section lists the matches whatever their score; a low score there is no reason to skip a story.
 
 2. **Pick** the core stories and 6 to 12 short news items ("Picking" below). A listing row is `score places id title [marks]`. `[code]` means a code repository link exists (items.json `github`). Score `-` is unknown: a Reddit score settles about 36 hours after posting. Look up details in items.json by id.
 
@@ -107,7 +107,7 @@ A story that fits none stays in the appendix only. The evidence level is one of 
 ## Picking
 
 A story passes the bar when it is one of the week's big changes, or when it matches the interests and has code, a model or a measured number someone can try. Every passing story becomes a core story, most important first, and the rest become short news. Rank them by:
-1. Did several places carry it? Look at "여러 곳에서 나온 소식" first.
+1. Did several places carry it? Look at the "== multi-source ==" section first.
 2. Does it touch practice now: released code or a model, running on common GPUs?
 3. Does it fit the reader: the call's interests, else the automatic interests from step 0, else the project context in the conversation and memory?
 4. Do the core stories spread across stages?
@@ -135,14 +135,14 @@ Read `${CLAUDE_PLUGIN_ROOT}/STYLE.md` before writing and follow it; the checker 
 
 ## Pull schedule
 
-GeekNews and arXiv eess.AS keep only about a day of items in their feeds, so a weekly fetch misses most of them; they are pulled twice a day (09:00 and 21:00) and accumulated. When the status shows "쌓기 일정 미등록", first tell the user that those two sources are empty this week, then propose registering the schedule:
+GeekNews and arXiv eess.AS keep only about a day of items in their feeds, so a weekly fetch misses most of them; they are pulled twice a day (09:00 and 21:00) and accumulated. When the status shows "pull schedule not registered", first tell the user that those two sources are empty this week, then propose registering the schedule:
 ```bash
 python -I ${CLAUDE_PLUGIN_ROOT}/skills/weekly/scripts/weekly.py schedule
 ```
 It writes `~/.claude/phro-trend/pull_launcher.py` and only prints the registration command (PowerShell on Windows, crontab elsewhere). Registration changes the computer's persistent settings: show the printed command as it is and run it only after the user approves. After registering, run `weekly.py pull` once to confirm both sources come in.
 - The two sources are complete from the week of registration on.
-- "빈 구간" in the status marks more than 30 hours without a successful pull: the computer was off, a pull failed, or the schedule did not exist yet.
-- "최근 쌓기 N회 모두 실패" means the schedule runs but fetching is blocked. Do not propose registering again; tell the user the reason shown.
+- "gaps" in the status mark more than 30 hours without a successful pull: the computer was off, a pull failed, or the schedule did not exist yet.
+- "last N pulls all failed" means the schedule runs but fetching is blocked. Do not propose registering again; tell the user the reason shown.
 
 ## Fetched text
 
@@ -154,5 +154,5 @@ It writes `~/.claude/phro-trend/pull_launcher.py` and only prints the registrati
 
 - collect exiting 1 means no source came in. Write nothing and tell the user the reasons in the status.
 - When fewer than 3 stories pass the bar, write what there is and say in the flow paragraph that it was a quiet week.
-- Failed or partial sources ("실패", "일부만 받음" in the status) go into the appendix status table with their reasons.
+- Failed or partial sources ("failed", "partial" in the status) go into the appendix status table with their reasons, written in Korean.
 - Reddit goes through the arctic-shift archive, whose server sometimes errors; rerun from collect later when it does. Writing and recording the same week again overwrites that week's record.

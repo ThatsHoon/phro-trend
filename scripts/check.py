@@ -19,17 +19,17 @@ HARD_PHRASES = ["Generated with", "Co-Authored-By", "Written by Claude", "Claude
                 "되어지", "되어진"]
 DECOR = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27bf\u25a0-\u25ff\u2b00-\u2bff\ufe0f]")
 # Natural words that read machine-made only when they pile up (STYLE.md "Fails when they pile up").
-DENSITY = {  # 이름: (표현들, 본문 1000자당 최대 횟수)
-    "번역투": (["를 통해", "을 통해", "에 대해", "에 대한", "에 있어", "함으로써"], 4.0),
-    "빈 수식어": (["다양한", "효과적", "효율적", "강력한", "원활한", "최적의", "중요한 역할"], 2.0),
+DENSITY = {  # name: (phrases, max per 1,000 body characters)
+    "translationese": (["를 통해", "을 통해", "에 대해", "에 대한", "에 있어", "함으로써"], 4.0),
+    "empty modifiers": (["다양한", "효과적", "효율적", "강력한", "원활한", "최적의", "중요한 역할"], 2.0),
 }
-PER_DOC = {  # 이름: (정규식, 문서당 최대 횟수)
-    "안내 문장": (r"다음과 같", 1),
-    "수사 의문문": (r"까요?\?", 1),
-    "화살표": (r"→|⇒|->", 2),
+PER_DOC = {  # name: (regex, max per page)
+    "signpost sentence": (r"다음과 같", 1),
+    "rhetorical question": (r"까요?\?", 1),
+    "arrows": (r"→|⇒|->", 2),
 }
-OPENERS = ["또한", "특히", "이처럼", "따라서", "즉"]  # 같은 말로 시작하는 문장은 문서당 3개까지
-MAX_BOLD = 3  # <p class="item"> 머리말 밖의 <strong>, <b>
+OPENERS = ["또한", "특히", "이처럼", "따라서", "즉"]  # at most 3 sentences per page may start with each
+MAX_BOLD = 3  # <strong> and <b> outside the <p class="item"> lead
 
 # weekly pages (must match skills/weekly/scripts/weekly.py)
 STAGES = ["모델 공개", "데이터", "학습", "평가", "경량화·추론", "응용"]
@@ -38,7 +38,10 @@ EVIDENCE = ["논문 주장", "코드 공개", "재현 후기 있음"]
 SLOTS = ["무엇이 달라졌나", "어디까지 믿나", "적용 고리", "해보려면"]
 WEEKLY_PARTS = ['<section id="glance"', '<section id="top"', '<section id="brief"',
                 '<section id="flow"', '<section id="try"', '<details id="appendix"']
-BODY_BASE, BODY_PER_STORY = 2000, 1000  # 본문 글자 수(공백 제외) 상한: 핵심 3건이면 5천 자
+BODY_BASE, BODY_PER_STORY = 2000, 1000  # body characters without spaces; 3 core stories allow 5,000
+INVISIBLE = {0x200B: "zero-width space", 0x200C: "zero-width non-joiner", 0x200D: "zero-width joiner",
+             0x2060: "word joiner", 0xFEFF: "byte-order mark", 0x00AD: "soft hyphen", 0x00A0: "no-break space",
+             0x202F: "narrow no-break space"}  # hidden marks and copy traces; one is enough to fail
 MAX_STORIES = MAX_PAPERS = 10
 
 
@@ -78,6 +81,9 @@ def check_style(html):
     for ch, name in (("\u2014", "em dash"), ("\u2013", "en dash")):
         if ch in shown:
             bad.append(f"{name} x{shown.count(ch)}")
+    for cp, name in INVISIBLE.items():
+        if chr(cp) in shown:
+            bad.append(f"{name} U+{cp:04X} x{shown.count(chr(cp))}")
     symbols = sorted(set(DECOR.findall(htmllib.unescape(_drop(r"<script\b.*?</script>", html)))))
     if symbols:
         bad.append(f"emoji or symbol: {symbols}")
@@ -91,20 +97,20 @@ def check_style(html):
         n = sum(text.count(w) for w in words)
         if n / per > limit:
             hits = [s[:40] for s in sents if any(w in s for w in words)][:3]
-            bad.append(f"{name} {n}회, 1000자당 {n / per:.1f} (기준 {limit}): {' / '.join(hits)}")
+            bad.append(f"{name}: {n} hits, {n / per:.1f} per 1,000 characters (limit {limit}): {' / '.join(hits)}")
     for name, (pattern, limit) in PER_DOC.items():
         n = len(re.findall(pattern, text))
         if n > limit:
             hits = [s[:40] for s in sents if re.search(pattern, s)][:3]
-            bad.append(f"{name} {n}회 (기준 {limit}): {' / '.join(hits)}")
+            bad.append(f"{name}: {n} hits (limit {limit}): {' / '.join(hits)}")
     for w in OPENERS:
         n = sum(1 for s in sents if re.match(rf"{w}[\s,]", s))
         if n > 3:
-            bad.append(f"같은 말로 시작하는 문장 '{w}' {n}개 (기준 3)")
+            bad.append(f"same opener '{w}': {n} sentences (limit 3)")
     rest = _drop(r'<p class="item"[^>]*>.*?</p>', _drop(r'<details id="appendix".*?</details>', html))
     bold = len(re.findall(r"<(?:strong|b)[\s>]", rest))
     if bold > MAX_BOLD:
-        bad.append(f"굵은 글씨 {bold}개 (기준 {MAX_BOLD})")
+        bad.append(f"bold: {bold} (limit {MAX_BOLD})")
     return bad
 
 
@@ -203,7 +209,7 @@ def check_weekly(html):
     n = _nonspace(style_text(html))
     cap = BODY_BASE + BODY_PER_STORY * len(stories)
     if n > cap:
-        bad.append(f"body: 본문 {n}자, {cap}자 안으로 줄인다")
+        bad.append(f"body: {n} characters without spaces, cut to {cap}")
     return bad
 
 

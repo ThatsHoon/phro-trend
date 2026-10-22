@@ -60,7 +60,7 @@ class StyleTest(unittest.TestCase):
         self.assertTrue(any("em dash" in m for m in check.check_style(page("<p>a \u2014 b</p>"))))
 
     def test_translationese_density(self):
-        self.assertTrue(any(m.startswith("번역투") for m in check.check_style(page("<p>" + KO * 20 + "이를 통해 " * 6 + "</p>"))))
+        self.assertTrue(any(m.startswith("translationese") for m in check.check_style(page("<p>" + KO * 20 + "이를 통해 " * 6 + "</p>"))))
         self.assertEqual(check.check_style(page("<p>" + KO * 20 + "이를 통해 " * 3 + "</p>")), [])
 
     def test_openers(self):
@@ -73,7 +73,18 @@ class StyleTest(unittest.TestCase):
 
     def test_bold_lead_in_exempt(self):
         self.assertEqual(check.check_style(page('<p class="item"><strong>결과.</strong> 설명.</p>' * 5)), [])
-        self.assertTrue(any("굵은" in m for m in check.check_style(page("<p><strong>a</strong></p>" * 4))))
+        self.assertTrue(any("bold" in m for m in check.check_style(page("<p><strong>a</strong></p>" * 4))))
+
+    def test_invisible_characters(self):
+        for cp in (0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF, 0x00AD, 0x00A0, 0x202F):
+            msgs = check.check_style(page(f"<p>정상 문장이다.{chr(cp)} 다음 문장이다.</p>"))
+            self.assertTrue(any(f"U+{cp:04X}" in m for m in msgs), hex(cp))
+        self.assertTrue(any("U+00A0" in m for m in check.check_style(page("<p>a&nbsp;b</p>"))))
+
+    def test_messages_are_english(self):
+        msgs = check.check(weekly_page(flow_repeat=120)) + check.check_style(page("<p>또한 a. 또한 b. 또한 c. 또한 d.</p>"))
+        self.assertTrue(any(m.startswith("body: ") and "cut to 5000" in m for m in msgs), msgs)
+        self.assertTrue(any(m.startswith("same opener '또한': 4") for m in msgs), msgs)
 
     def test_style_md_lists_every_rule(self):
         text = (ROOT / "STYLE.md").read_text(encoding="utf-8")

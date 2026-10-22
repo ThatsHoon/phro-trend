@@ -49,7 +49,7 @@ def make_get(fail=(), reddit_pages=None, hf=None):
     def get(url, headers=None):
         for key in fail:
             if key in url:
-                raise w.FetchError("요청 제한(429)")
+                raise w.FetchError("rate limited (429)")
         if "subreddit=LocalLLaMA" in url:
             return json.dumps({"data": reddit_pages.pop(0) if reddit_pages else one_post}).encode()
         if "subreddit=MachineLearning" in url:
@@ -128,14 +128,14 @@ class CollectTest(unittest.TestCase):
 
     def test_pull_failures_are_not_called_unscheduled(self):
         (self.home / "pull").mkdir()
-        rows = [{"at": f"2026-10-1{d}T09:00:00+09:00", "feed": "geeknews", "ok": False, "error": "요청 제한(429)"}
+        rows = [{"at": f"2026-10-1{d}T09:00:00+09:00", "feed": "geeknews", "ok": False, "error": "rate limited (429)"}
                 for d in (3, 4, 5)]
         (self.home / "pull" / "log.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
         self.run_collect()
         error = self.status()["geeknews"]["error"]
         self.assertNotEqual(error, w.UNSCHEDULED)
-        self.assertIn("3회", error)
-        self.assertIn("요청 제한(429)", error)
+        self.assertIn("last 3 pulls", error)
+        self.assertIn("rate limited (429)", error)
         self.assertEqual(self.status()["arxiv_eess_as"]["error"], w.UNSCHEDULED)
 
     def test_corrupt_record_warns_and_collects(self):
@@ -172,9 +172,9 @@ class CollectTest(unittest.TestCase):
 
     def test_collect_reports_unscheduled_pull(self):
         _, printed = self.run_collect()
-        self.assertEqual(self.status()["geeknews"]["error"], "쌓기 일정 미등록")
-        self.assertIn("GeekNews: 쌓기 일정 미등록", printed)
-        self.assertLess(printed.index("GeekNews: 쌓기 일정 미등록"), printed.index("HF Daily Papers: 2개"))
+        self.assertEqual(self.status()["geeknews"]["error"], "pull schedule not registered")
+        self.assertIn("GeekNews: pull schedule not registered", printed)
+        self.assertLess(printed.index("GeekNews: pull schedule not registered"), printed.index("HF Daily Papers: 2"))
 
     def test_collect_keeps_partial_reddit(self):
         end_ts = int(END.timestamp())
@@ -186,7 +186,7 @@ class CollectTest(unittest.TestCase):
         st = self.status()["r_localllama"]
         self.assertTrue(st["ok"])
         self.assertEqual(st["count"], 100)
-        self.assertTrue(st["error"].startswith("일부만 받음"))
+        self.assertTrue(st["error"].startswith("partial"))
 
     def test_covered_marks(self):
         (self.home / "seen.json").write_text('{"2610.14224": "2026-10-21"}', encoding="utf-8")
@@ -216,9 +216,9 @@ class CollectTest(unittest.TestCase):
         code, printed = self.run_collect(get=make_get(hf=self.hf_rows()), keywords=["speech"])
         self.assertEqual(code, 0)
         self.assertEqual(self.status()["hf_papers"]["dropped"], 21)
-        self.assertIn("인기 하위 21개 뺌", printed)
-        self.assertIn("== 관심사에 맞는 글 ==", printed)
-        self.assertIn("Speech event detector", printed.split("== 관심사에 맞는 글 ==")[1])
+        self.assertIn("dropped 21 low-popularity", printed)
+        self.assertIn("== interest matches ==", printed)
+        self.assertIn("Speech event detector", printed.split("== interest matches ==")[1])
         self.assertNotIn("2610.00001", self.stories())
         self.assertIn("2610.00002", self.stories())
 
@@ -227,7 +227,7 @@ class CollectTest(unittest.TestCase):
         rows[29]["paper"]["summary"] = "A speech model"  # 2610.00030: top score, keyword only in the head
         with mock.patch.object(w, "MATCH_CAP", 1):
             _, printed = self.run_collect(get=make_get(hf=rows), keywords=["speech"])
-        section = printed.split("== 관심사에 맞는 글 ==")[1].split(chr(10) * 2)[0]
+        section = printed.split("== interest matches ==")[1].split(chr(10) * 2)[0]
         self.assertIn("Speech event detector", section)
         self.assertNotIn("2610.00030", section)
 
@@ -241,8 +241,8 @@ class CollectTest(unittest.TestCase):
         project = self.interest_store(lambda key: json.dumps({key: {"week": "2026-W43", "updated": "", "interests": [
             {"topic": "t", "keywords": ["speech", "asr"], "why": "w"}]}}))
         _, printed = self.run_collect(get=make_get(hf=self.hf_rows()), project=project, keywords=["LoRA"])
-        self.assertIn("== 관심사에 맞는 글 ==", printed)
-        self.assertIn("Speech event detector", printed.split("== 관심사에 맞는 글 ==")[1])
+        self.assertIn("== interest matches ==", printed)
+        self.assertIn("Speech event detector", printed.split("== interest matches ==")[1])
 
     def interest_store(self, text):
         project = Path(self.tmp.name) / "proj"
@@ -254,14 +254,14 @@ class CollectTest(unittest.TestCase):
         project = self.interest_store(lambda key: json.dumps({key: {"week": "2026-W43", "updated": "", "interests": [
             {"topic": "t", "keywords": ["speech", "asr"], "why": "w"}]}}))
         _, printed = self.run_collect(get=make_get(hf=self.hf_rows()), project=project)
-        self.assertIn("== 관심사에 맞는 글 ==", printed)
+        self.assertIn("== interest matches ==", printed)
 
     def test_collect_broken_interest_store(self):
         project = self.interest_store(lambda key: "{oops")
         code, printed = self.run_collect(get=make_get(hf=self.hf_rows()), project=project)
         self.assertEqual(code, 0)
         self.assertIn("interests.json", printed)
-        self.assertNotIn("== 관심사에 맞는 글 ==", printed)
+        self.assertNotIn("== interest matches ==", printed)
 
     def test_default_week(self):
         self.run_collect(week=None, today=date(2026, 10, 22))

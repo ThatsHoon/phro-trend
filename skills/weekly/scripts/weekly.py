@@ -30,7 +30,7 @@ from datetime import date, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 UA = f"phro-trend/{VERSION} (+https://github.com/ThatsHoon/phro-trend)"
 HOME = Path.home() / ".claude" / "phro-trend"
 STAGES = ["모델 공개", "데이터", "학습", "평가", "경량화·추론", "응용"]
@@ -287,7 +287,7 @@ class Fetcher:
                         break
                     target = urllib.parse.urljoin(target, location)
             except Exception:
-                raise FetchError("robots.txt 확인 실패") from None
+                raise FetchError("robots.txt check failed") from None
             if status == 200:
                 rp = urllib.robotparser.RobotFileParser()
                 rp.parse(body.decode("utf-8", "replace").splitlines())
@@ -295,7 +295,7 @@ class Fetcher:
             elif 400 <= status < 500:
                 self.robots[origin] = None  # no robots.txt: everything allowed
             else:
-                raise FetchError("robots.txt 확인 실패")
+                raise FetchError("robots.txt check failed")
         rp = self.robots[origin]
         return rp is None or rp.can_fetch("phro-trend", url)
 
@@ -319,16 +319,16 @@ class Fetcher:
             if status not in RETRY:
                 return status, body, location
             if delay is None:
-                raise FetchError(f"요청 제한({status})" if status in (429, 422) else f"HTTP {status}")
+                raise FetchError(f"rate limited ({status})" if status in (429, 422) else f"HTTP {status}")
             self.sleep(delay)
 
     def get(self, url: str, headers: dict | None = None) -> bytes:
         hdrs = {"User-Agent": UA, **(headers or {})}
         for _ in range(MAX_HOPS + 1):  # each redirect hop goes through robots.txt and pacing again
             if not _web(url):
-                raise FetchError(f"http(s)가 아닌 주소: {url[:80]}")
+                raise FetchError(f"not an http(s) address: {url[:80]}")
             if not self._robots_allow(url, hdrs):
-                raise FetchError("robots.txt가 막음")
+                raise FetchError("blocked by robots.txt")
             status, body, location = self._retried(url, hdrs)
             if 300 <= status < 400 and location:
                 url = urllib.parse.urljoin(url, location)
@@ -336,22 +336,22 @@ class Fetcher:
             if status >= 300:
                 raise FetchError(f"HTTP {status}")
             return body[:MAX_BYTES]
-        raise FetchError(f"넘겨주기가 {MAX_HOPS}번을 넘음")
+        raise FetchError(f"more than {MAX_HOPS} redirects")
 
 
 SOURCES = [  # (key, label, role, kind, arg); this order also picks the lead source when stories merge
-    ("hf_papers", "HF Daily Papers", "발견", "hf", None),
-    ("hf_blog", "HF 블로그", "발견", "feed", "https://huggingface.co/blog/feed.xml"),
-    ("ahead_of_ai", "Ahead of AI", "해설", "feed", "https://magazine.sebastianraschka.com/feed"),
-    ("dair", "DAIR.AI", "해설", "feed", "https://nlp.elvissaravia.com/feed"),
-    ("deep_focus", "Deep (Learning) Focus", "해설", "feed", "https://cameronrwolfe.substack.com/feed"),
-    ("lilian_weng", "Lilian Weng", "해설", "feed", "https://lilianweng.github.io/index.xml"),
-    ("unsloth", "Unsloth 릴리스", "실전", "github", "unslothai/unsloth"),
-    ("r_localllama", "r/LocalLLaMA", "실전", "reddit", "LocalLLaMA"),
-    ("r_machinelearning", "r/MachineLearning", "실전", "reddit", "MachineLearning"),
-    ("pytorchkr", "PyTorchKR", "국내", "discourse", "https://discuss.pytorch.kr"),
-    ("geeknews", "GeekNews", "국내", "pulled", "geeknews"),
-    ("arxiv_eess_as", "arXiv eess.AS", "음성", "pulled", "arxiv-eess-AS"),
+    ("hf_papers", "HF Daily Papers", "discovery", "hf", None),
+    ("hf_blog", "HF blog", "discovery", "feed", "https://huggingface.co/blog/feed.xml"),
+    ("ahead_of_ai", "Ahead of AI", "commentary", "feed", "https://magazine.sebastianraschka.com/feed"),
+    ("dair", "DAIR.AI", "commentary", "feed", "https://nlp.elvissaravia.com/feed"),
+    ("deep_focus", "Deep (Learning) Focus", "commentary", "feed", "https://cameronrwolfe.substack.com/feed"),
+    ("lilian_weng", "Lilian Weng", "commentary", "feed", "https://lilianweng.github.io/index.xml"),
+    ("unsloth", "Unsloth releases", "practice", "github", "unslothai/unsloth"),
+    ("r_localllama", "r/LocalLLaMA", "practice", "reddit", "LocalLLaMA"),
+    ("r_machinelearning", "r/MachineLearning", "practice", "reddit", "MachineLearning"),
+    ("pytorchkr", "PyTorchKR", "domestic", "discourse", "https://discuss.pytorch.kr"),
+    ("geeknews", "GeekNews", "domestic", "pulled", "geeknews"),
+    ("arxiv_eess_as", "arXiv eess.AS", "speech", "pulled", "arxiv-eess-AS"),
 ]
 ROLE = {key: role for key, _, role, _, _ in SOURCES}
 
@@ -440,7 +440,7 @@ def src_reddit(get, key: str, sub: str, start: datetime, end: datetime) -> list[
             break
         before = min(int(p["created_utc"]) for p in data)
     else:  # twenty full pages and still more: the oldest part of the week is missing
-        raise Partial(out, "20쪽 한도에 걸려 주 앞부분이 빠짐")
+        raise Partial(out, "hit the 20-page cap; the start of the week is missing")
     return out
 
 
@@ -607,7 +607,7 @@ SCORED = {"hf_papers", "r_localllama", "r_machinelearning"}  # PyTorchKR likes a
 KEEP_SHARE = 0.25  # a scored source keeps its top quarter
 KEEP_MIN = 20  # below this many scored stories a source keeps them all
 MATCH_CAP = 30
-UNSCHEDULED = "쌓기 일정 미등록"
+UNSCHEDULED = "pull schedule not registered"
 
 
 def _mention(x: dict) -> dict:
@@ -665,33 +665,33 @@ def _row(s: dict) -> str:
     if s["covered_weekly"]:
         marks += f" [{s['covered_weekly'].split('-')[-1]}]"
     score = "-" if s["score"] is None else s["score"]
-    return f"{score!s:>5} {s['n_sources']}곳 {s['id']}  {s['title'][:90]}{marks}"
+    return f"{score!s:>5} {s['n_sources']} {s['id']}  {s['title'][:90]}{marks}"
 
 
 def listing(stories: list[dict], status: dict, week: str, start: datetime, end: datetime) -> str:
-    lines = [f"{week}  {start:%Y-%m-%d} ~ {end - timedelta(days=1):%Y-%m-%d}  소식 {len(stories)}개"]
+    lines = [f"{week}  {start:%Y-%m-%d} ~ {end - timedelta(days=1):%Y-%m-%d}  {len(stories)} stories"]
     warn, fine = [], []
     for st in status.values():
         name = st["label"]
-        drop = f", 인기 하위 {st['dropped']}개 뺌" if st.get("dropped") else ""
+        drop = f", dropped {st['dropped']} low-popularity" if st.get("dropped") else ""
         if not st["ok"]:
-            warn.append(f"{name}: {UNSCHEDULED}" if st["error"] == UNSCHEDULED else f"{name}: 실패 ({st['error']})")
+            warn.append(f"{name}: {UNSCHEDULED}" if st["error"] == UNSCHEDULED else f"{name}: failed ({st['error']})")
         elif st["error"]:
-            warn.append(f"{name}: {st['count']}개, {st['error']}{drop}")
+            warn.append(f"{name}: {st['count']}, {st['error']}{drop}")
         elif st["gaps"]:
             tz = start.tzinfo
-            spans = ", ".join(f"{parse_date(a).astimezone(tz):%m-%d %H}시~{parse_date(b).astimezone(tz):%m-%d %H}시"
+            spans = ", ".join(f"{parse_date(a).astimezone(tz):%m-%d %H}:00~{parse_date(b).astimezone(tz):%m-%d %H}:00"
                               for a, b in st["gaps"])
-            warn.append(f"{name}: {st['count']}개{drop}, 빈 구간 {spans}")
+            warn.append(f"{name}: {st['count']}{drop}, gaps {spans}")
         else:
-            fine.append(f"{name}: {st['count']}개{drop}")
+            fine.append(f"{name}: {st['count']}{drop}")
     lines += warn + fine
     multi = sorted((s for s in stories if s["n_sources"] >= 2), key=lambda s: (-s["n_sources"], -(s["score"] or 0)))
-    lines += ["", "== 여러 곳에서 나온 소식 =="] + [_row(s) for s in multi[:40]]
+    lines += ["", "== multi-source =="] + [_row(s) for s in multi[:40]]
     matched = sorted((s for s in stories if s.get("match")),  # title hits first: a keyword in the abstract is weaker
                      key=lambda s: (s["match"] != "title", s["score"] is None, -(s["score"] or 0)))
     if matched:
-        lines += ["", "== 관심사에 맞는 글 =="] + [_row(s) for s in matched[:MATCH_CAP]]
+        lines += ["", "== interest matches =="] + [_row(s) for s in matched[:MATCH_CAP]]
     for key, label, *_ in SOURCES:
         own = [s for s in stories if s["source"] == key]
         if not own:
@@ -749,7 +749,7 @@ def _load_json(path: Path) -> dict:
     except FileNotFoundError:
         return {}
     except ValueError as e:
-        raise ValueError(f"{path} 읽기 실패 ({e})") from None
+        raise ValueError(f"{path} is broken ({e})") from None
 
 
 def _pull_trouble(home: Path, name: str) -> str:
@@ -757,7 +757,7 @@ def _pull_trouble(home: Path, name: str) -> str:
     failed = [r for r in _read_jsonl(Path(home) / "pull" / "log.jsonl") if r.get("feed") == name]
     if not failed:
         return UNSCHEDULED
-    return f"최근 쌓기 {len(failed)}회 모두 실패, 마지막 이유: {failed[-1].get('error')}"
+    return f"last {len(failed)} pulls all failed, last reason: {failed[-1].get('error')}"
 
 
 def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, today: date | None = None,
@@ -792,7 +792,7 @@ def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, t
                     st["error"] = _pull_trouble(home, arg)
             st["ok"] = st["error"] is None
         except Partial as e:  # keep what arrived; the status says it is only part of the week
-            got, st["ok"], st["error"] = e.items, True, f"일부만 받음: {e.reason}"
+            got, st["ok"], st["error"] = e.items, True, f"partial: {e.reason}"
         except Exception as e:
             st["error"] = _reason(e)
         st["count"] = len(got)
@@ -804,7 +804,7 @@ def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, t
         try:
             records.append(_load_json(home / name))
         except ValueError as e:  # a broken record should not cost the week's collection
-            print(f"경고: {e}. 이번 목록에는 그 기록의 표시가 빠진다.")
+            print(f"warning: {e}; this listing leaves out that record's marks")
             records.append({})
     mark_covered(stories, *records, week)
     words = list(keywords or [])  # the rescue only adds, so call keywords join the stored ones
@@ -812,7 +812,7 @@ def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, t
         try:
             words += _interest_keywords(home, project)
         except ValueError as e:
-            print(f"경고: {e}. 저장된 관심사 키워드 없이 거른다.")
+            print(f"warning: {e}; filtering without the stored interest keywords")
     stories, dropped = prefilter(stories, words)
     for key, st in status.items():
         st["dropped"] = dropped.get(key, 0)
@@ -863,7 +863,7 @@ def _paper_text(get, aid: str) -> str:
     except FetchError:
         meta = json.loads(get(f"https://huggingface.co/api/papers/{aid}"))
     links = [f"{k}: {meta[k]}" for k in ("githubRepo", "projectPage") if meta.get(k)]
-    return "\n\n".join([f"# {meta.get('title') or aid}", "(본문 마크다운이 없어 초록만 받음)", meta.get("summary") or ""] + links)
+    return "\n\n".join([f"# {meta.get('title') or aid}", "(no body markdown; abstract only)", meta.get("summary") or ""] + links)
 
 
 def read(urls: list[str], out: Path, get, home: Path = HOME) -> list[Path]:
@@ -891,7 +891,7 @@ def read(urls: list[str], out: Path, get, home: Path = HOME) -> list[Path]:
             elif row:
                 name, text = f"pulled-{_slug(url)}.txt", cached
             elif _host(url) == "news.hada.io":
-                print(f"skip {url}: GeekNews 페이지는 받지 않음")
+                print(f"skip {url}: GeekNews pages are not fetched")
                 continue
             elif thread:
                 name, text = f"reddit-{thread.group(1)}.txt", _reddit_text(get, thread.group(1))

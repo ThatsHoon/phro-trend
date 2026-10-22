@@ -13,7 +13,7 @@ Write plain Korean declarative sentences (~다). Keep sentences short, and let t
 One occurrence fails the check. The appendix, the original-title line (`class="orig"`), code, diagrams and URLs are not checked; dashes and emoji are checked everywhere.
 
 - Tool attributions: `Generated with`, `Co-Authored-By`, `Written by Claude`, `Claude가 작성`, `AI가 작성`, `AI 요약`, `AI-generated`, `as an AI`, `언어 모델로서`.
-- Characters: emoji and decorative symbols (check marks, stars, squares, circles, triangles), the em dash (U+2014) and the en dash (U+2013). Write ranges with a tilde between numbers or with "에서", and join sentences with commas or periods. Circled digits (①②③) used as story numbers on the map are fine.
+- Characters: emoji and decorative symbols (check marks, stars, squares, circles, triangles), the em dash (U+2014) and the en dash (U+2013). Write ranges with a tilde between numbers or with "에서", and join sentences with commas or periods. Circled digits (①②③) used as story numbers on the map are fine. Invisible characters fail too, because they carry hidden marks and copy traces: zero-width space (U+200B), zero-width non-joiner (U+200C), zero-width joiner (U+200D), word joiner (U+2060), byte-order mark (U+FEFF), soft hyphen (U+00AD) and the no-break spaces U+00A0 (`&nbsp;` too) and U+202F.
 - Progress phrases: `알아보겠습니다`, `살펴보겠습니다`, `알아봅시다`, `살펴봅시다`, `소개해 드리겠습니다`, `소개하겠습니다`. Closers: `결론적으로`, `요약하자면`, `정리하자면`, `귀추가 주목`, `앞으로가 기대`. Hype: `혁신적`, `획기적`, `게임 체인저`, `게임체인저`, `판도를 바꾸`, `패러다임 전환`, `새로운 지평`.
 - Double passive: `되어지`, `되어진`. Write "개선된다", not "개선되어진다".
 - The `ai_summary` Hugging Face attaches to papers: never copy it, since a machine summary is itself a trace.

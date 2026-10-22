@@ -17,7 +17,7 @@ def get(url, headers=None):
 
 
 def failing_get(url, headers=None):
-    raise w.FetchError("요청 제한(429)")
+    raise w.FetchError("rate limited (429)")
 
 
 class PullTest(unittest.TestCase):

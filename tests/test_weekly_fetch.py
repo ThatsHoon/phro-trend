@@ -75,7 +75,7 @@ class FetchTest(unittest.TestCase):
     def test_redirect_checks_robots_of_the_new_host(self):
         f = self.make({"https://a.com/robots.txt": ALLOW, "https://a.com/x": (302, b"", "https://b.com/y"),
                        "https://b.com/robots.txt": (200, b"User-agent: *\nDisallow: /\n")})
-        with self.assertRaisesRegex(w.FetchError, "막음"):
+        with self.assertRaisesRegex(w.FetchError, "blocked by robots"):
             f.get("https://a.com/x")
         self.assertNotIn("https://b.com/y", [u for u, _ in f.opener.calls])
 
@@ -97,7 +97,7 @@ class FetchTest(unittest.TestCase):
     def test_robots_redirect_followed(self):
         f = self.make({"https://a.com/robots.txt": (301, b"", "https://www.a.com/robots.txt"),
                        "https://www.a.com/robots.txt": (200, b"User-agent: *\nDisallow: /\n")})
-        with self.assertRaisesRegex(w.FetchError, "막음"):
+        with self.assertRaisesRegex(w.FetchError, "blocked by robots"):
             f.get("https://a.com/x")
 
 

@@ -20,7 +20,7 @@ The skill works when:
 
 Skills are built in English and write in Korean, because instructions are loaded on every call and English costs fewer tokens. SKILL.md files, STYLE.md instructions, specs, plans and new script messages are English. Korean stays wherever it is output or data: page section titles, labels and h4 names that the checker reads, the banned-phrase lists, example sentences that show the target Korean, and the status strings existing scripts print.
 
-This change converts `skills/ai/SKILL.md`, `skills/weekly/SKILL.md` and `STYLE.md`. The messages of `weekly.py` and `check.py`, new ones in this change included, stay Korean for now: they are short and tests pin them.
+This change converts `skills/ai/SKILL.md`, `skills/weekly/SKILL.md` and `STYLE.md`. The messages of `weekly.py` and `check.py`, new ones in this change included, stay Korean for now: they are short and tests pin them. Version 0.3.1 (2026-10-22) made them English as well and added a check for invisible characters (zero-width and no-break spaces, soft hyphen, byte-order mark) to STYLE.md and `check.py`.
 
 ## 3. Inputs
 
@@ -125,4 +125,4 @@ Interest keywords are the union of `--keywords` (interests given in the call, wr
 
 ## 12. Out of scope
 
-Interests for the `ai` skill; pinning or excluding topics (call interests override a run); merging folders or global interests; record folders that Claude Code shortens with a hash for very long paths, which the name rule cannot find; reading .docx or .pdf bodies; converting the messages of `weekly.py` and `check.py`.
+Interests for the `ai` skill; pinning or excluding topics (call interests override a run); merging folders or global interests; record folders that Claude Code shortens with a hash for very long paths, which the name rule cannot find; reading .docx or .pdf bodies.

@@ -100,8 +100,8 @@ class ReadTest(unittest.TestCase):
 
     def test_skip_on_fetch_error(self):
         def failing_get(url, headers=None):
-            raise w.FetchError("robots.txt가 막음")
+            raise w.FetchError("blocked by robots.txt")
 
         paths, printed = self.read(["https://blocked.com/x"], get=failing_get)
         self.assertEqual(paths, [])
-        self.assertIn("skip https://blocked.com/x: robots.txt가 막음", printed)
+        self.assertIn("skip https://blocked.com/x: blocked by robots.txt", printed)

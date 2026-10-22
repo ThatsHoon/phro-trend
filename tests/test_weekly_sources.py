@@ -43,7 +43,7 @@ class SourcesTest(unittest.TestCase):
         items = w.src_hf(get, "2026-W42")
         self.assertEqual(len(items), 101)
         self.assertEqual(items[0]["url"], "https://huggingface.co/papers/2610.00000")
-        self.assertEqual((items[0]["source"], items[0]["role"], items[0]["ident"]), ("hf_papers", "발견", "2610.00000"))
+        self.assertEqual((items[0]["source"], items[0]["role"], items[0]["ident"]), ("hf_papers", "discovery", "2610.00000"))
         self.assertNotIn("machine", json.dumps(items))
 
     def test_src_feed_window(self):
@@ -116,7 +116,7 @@ class SourcesTest(unittest.TestCase):
             lines = [json.dumps(dict(r, content="abstract", links=[], fetched_at="2026-10-14T09:00:00+09:00")) for r in rows]
             (home / "pull" / "arxiv-eess-AS.jsonl").write_text("\n".join(lines) + "\n{broken", encoding="utf-8")
             got = w.src_pulled(home, "arxiv_eess_as", "arxiv-eess-AS", START, END)
-            self.assertEqual([(x["source"], x["role"], x["title"]) for x in got], [("arxiv_eess_as", "음성", "in")])
+            self.assertEqual([(x["source"], x["role"], x["title"]) for x in got], [("arxiv_eess_as", "speech", "in")])
             self.assertEqual(w.src_pulled(home, "geeknews", "geeknews", START, END), [])
 
 
