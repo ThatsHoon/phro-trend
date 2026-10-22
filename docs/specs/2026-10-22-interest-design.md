@@ -35,7 +35,7 @@ The project folder P is the folder the session started in (the working directory
 
 **What a record gives.**
 - The last `custom-title` entry.
-- `user` entries the person typed. Entries with a `tool_result`, `isMeta`, `isSidechain` or `isCompactSummary` are skipped. Tag blocks such as `<system-reminder>`, `<task-notification>` and `<pasted_content>` are removed, since pasted text is someone else's and may carry data. A slash command keeps its name and arguments. Each prompt is cut to 160 characters, newest 8 per session.
+- `user` entries the person typed. Entries with a `tool_result`, `isMeta`, `isSidechain` or `isCompactSummary` are skipped. Tag blocks such as `<system-reminder>`, `<task-notification>` and `<pasted_content>` are removed, since pasted text is someone else's and may carry data. A slash command keeps its name and arguments. Prompts longer than 2,000 characters (pasted data, batch payloads such as automated data-review runs) and entries whose `promptSource` is `system` are skipped. Each prompt is cut to 160 characters, newest 8 per session, and a session left with no title, prompt or summary is dropped.
 - The latest `isCompactSummary` entry inside the window: 600 characters after its `Summary:` line, or from its start when it has none.
 
 Assistant text and tool output are never read, because raw data and secrets live there. Forks copy the parent's whole history, so entries count once by `uuid`. A substring test skips all other lines before JSON parsing: the 12 records of one large project (3.5 GB, 762,698 lines) took 16.8 s and held 1,560 unique entries.

@@ -22,6 +22,7 @@ DAYS = 14
 PROMPT_CHARS = 160
 PROMPTS_PER_SESSION = 8
 SUMMARY_CHARS = 600
+LONG_PROMPT = 2000  # longer prompts are pasted data or batch payloads, not typed requests
 SESSION_BUDGET = 7000
 DOC_BUDGET = 3000
 BUDGET = SESSION_BUDGET + DOC_BUDGET
@@ -138,7 +139,7 @@ def _read(path: Path, project: Path, exact: bool, since: datetime, seen: set) ->
             if e.get("isCompactSummary"):
                 if summary_at is None or when >= summary_at:
                     summary, summary_at = _summary_head(text), when
-            elif not e.get("isMeta"):
+            elif not e.get("isMeta") and e.get("promptSource") != "system" and len(text) <= LONG_PROMPT:
                 prompt = clean_prompt(text)
                 if prompt:
                     prompts.append((when, prompt))
@@ -155,7 +156,7 @@ def sessions(claude_dir: Path, project: Path, since: datetime) -> tuple[list[dic
     for mtime, path, exact in _records(claude_dir, project, since):
         s, bad = _read(path, project, exact, since, seen)
         skipped += bad
-        if s is not None:
+        if s is not None and (s["title"] or s["prompts"] or s["summary"]):
             s["last"] = datetime.fromtimestamp(mtime, timezone.utc)
             out.append(s)
     return out, skipped

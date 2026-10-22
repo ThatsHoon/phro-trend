@@ -113,6 +113,17 @@ class SessionTest(Base):
         (nested / "a.jsonl").write_text(json.dumps(title("agent"), separators=(",", ":")) + "\n", encoding="utf-8")
         self.assertEqual(self.titles(), {"main"})
 
+    def test_batch_and_system_prompts_skipped(self):
+        # batch runs send one huge prompt with data rows; system-sourced entries are injected, not typed
+        self.record("s", [title("main"), user("typed", "u1", promptSource="sdk"),
+                          user("injected", "u2", promptSource="system"), user("rows " * 600, "u3")])
+        (s,), _ = i.sessions(self.claude, self.project, SINCE)
+        self.assertEqual(s["prompts"], ["typed"])
+
+    def test_empty_session_dropped(self):
+        self.record("batch", [user("rows " * 600, "u1")])
+        self.assertEqual(i.sessions(self.claude, self.project, SINCE)[0], [])
+
     def test_old_record_skipped_by_mtime(self):
         old = self.record("old", [title("old")])
         os.utime(old, (SINCE.timestamp() - 3600, SINCE.timestamp() - 3600))
