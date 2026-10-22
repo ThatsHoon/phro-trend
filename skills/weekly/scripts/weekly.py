@@ -723,6 +723,16 @@ def _reddit_text(get, post_id: str) -> str:
     return f"{posts[0].get('title') or ''}\n\n{posts[0].get('selftext') or ''}\n\n{comments}"
 
 
+def _paper_text(get, aid: str) -> str:
+    """HF builds the markdown from arXiv HTML; papers without it 404 there, so fall back to the abstract."""
+    try:
+        return get(f"https://huggingface.co/papers/{aid}.md").decode("utf-8", "replace")
+    except FetchError:
+        meta = json.loads(get(f"https://huggingface.co/api/papers/{aid}"))
+    links = [f"{k}: {meta[k]}" for k in ("githubRepo", "projectPage") if meta.get(k)]
+    return "\n\n".join([f"# {meta.get('title') or aid}", "(본문 마크다운이 없어 초록만 받음)", meta.get("summary") or ""] + links)
+
+
 def read(urls: list[str], out: Path, get, home: Path = HOME) -> list[Path]:
     """Save the originals of chosen stories as text. Reddit and GeekNews pages are never requested."""
     out = Path(out)
@@ -742,7 +752,7 @@ def read(urls: list[str], out: Path, get, home: Path = HOME) -> list[Path]:
                 continue
             elif arxiv_id(url):
                 aid = arxiv_id(url)
-                name, text = f"{aid}.md", get(f"https://huggingface.co/papers/{aid}.md").decode("utf-8", "replace")
+                name, text = f"{aid}.md", _paper_text(get, aid)
             elif thread:
                 name, text = f"reddit-{thread.group(1)}.txt", _reddit_text(get, thread.group(1))
             elif repo and len(path_parts) == 2:

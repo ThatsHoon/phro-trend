@@ -52,6 +52,18 @@ class ReadTest(unittest.TestCase):
         self.assertNotIn("x()", paths[3].read_text(encoding="utf-8"))
         self.assertFalse(any(c.startswith(("https://www.reddit.com", "https://reddit.com")) for c in self.calls))
 
+    def test_paper_without_markdown_falls_back_to_abstract(self):
+        self.routes["https://huggingface.co/api/papers/2610.19789"] = json.dumps(
+            {"id": "2610.19789", "title": "A Reality Check", "summary": "We compare ten methods.",
+             "ai_summary": "MACHINE SUMMARY", "githubRepo": "https://github.com/aim-uofa/Self-Distillation-AgentRL"}).encode()
+        paths, _ = self.read(["https://huggingface.co/papers/2610.19789"])
+        self.assertEqual([p.name for p in paths], ["2610.19789.md"])
+        text = paths[0].read_text(encoding="utf-8")
+        self.assertIn("A Reality Check", text)
+        self.assertIn("We compare ten methods.", text)
+        self.assertIn("https://github.com/aim-uofa/Self-Distillation-AgentRL", text)
+        self.assertNotIn("MACHINE SUMMARY", text)
+
     def test_geeknews_from_pull_cache_only(self):
         row = {"title": "GN story", "link": "https://news.hada.io/topic?id=1", "content": "summary text"}
         (self.home / "pull" / "geeknews.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")

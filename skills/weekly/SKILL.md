@@ -31,7 +31,7 @@ description: 지난 한 주 동안 Hugging Face Daily Papers, HF 블로그, AI �
    python -I ${CLAUDE_PLUGIN_ROOT}/skills/weekly/scripts/weekly.py read <URL...> --out <작업폴더>
    ```
    저장되는 내용은 출처마다 다르다.
-   - HF 논문: 본문 마크다운
+   - HF 논문: 본문 마크다운(본문이 없는 논문은 제목과 초록, 코드 링크)
    - Reddit 글: 보관소의 본문과 상위 댓글
    - GitHub 저장소: README
    - GeekNews: 쌓아 둔 요약
