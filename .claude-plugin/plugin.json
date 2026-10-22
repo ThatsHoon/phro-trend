@@ -1,8 +1,8 @@
 {
   "name": "phro-trend",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "MIT",
-  "description": "Turn trending research papers into practical Korean briefs: what was done before, what broke, what the paper changes, and where it fits in your stack.",
+  "description": "Turn trending research papers and a week of AI news into practical Korean briefs: what changed, how far to trust it, and where it fits in your stack.",
   "author": {
     "name": "thatshoon"
   }
