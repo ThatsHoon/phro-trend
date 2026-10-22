@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import email.utils
 import html as htmllib
+import json
 import re
 import time
 import urllib.error
@@ -209,10 +210,20 @@ def ident(url: str) -> str:
 MAX_BYTES = 10_000_000
 PACE = {"arctic-shift.photon-reddit.com": 0.5, "discuss.pytorch.kr": 1.0, "huggingface.co": 0.3}
 BACKOFF = (2, 4, 8)
+# 5xx is retried too: arctic-shift asks callers to try again while its database warms up
+RETRY = {429, 422, 500, 502, 503, 504}
 
 
 class FetchError(Exception):
     """Why a source could not be read this run; written as is into the collection status."""
+
+
+class Partial(Exception):
+    """A source answered part of the week, then failed; collect keeps the items and notes the reason."""
+
+    def __init__(self, items: list[dict], reason: str):
+        super().__init__(reason)
+        self.items, self.reason = items, reason
 
 
 class _Redirect308(urllib.request.HTTPRedirectHandler):
@@ -234,7 +245,7 @@ def _urlopen(url: str, headers: dict) -> tuple[int, bytes]:
 
 
 class Fetcher:
-    """One polite client per run: honest User-Agent, robots.txt per host, pacing, backoff on 429/422."""
+    """One polite client per run: honest User-Agent, robots.txt per host, pacing, retries on 429, 422 and 5xx."""
 
     def __init__(self, opener=None, sleep=time.sleep, clock=time.monotonic):
         self.opener = opener or _urlopen
@@ -281,11 +292,138 @@ class Fetcher:
             raise FetchError("robots.txt가 막음")
         for delay in (*BACKOFF, None):
             status, body = self._paced(url, hdrs)
-            if status in (429, 422):
+            if status in RETRY:
                 if delay is None:
-                    raise FetchError(f"요청 제한({status})")
+                    raise FetchError(f"요청 제한({status})" if status in (429, 422) else f"HTTP {status}")
                 self.sleep(delay)
                 continue
             if status >= 400:
                 raise FetchError(f"HTTP {status}")
             return body[:MAX_BYTES]
+
+
+SOURCES = [  # (key, label, role, kind, arg); this order also picks the lead source when stories merge
+    ("hf_papers", "HF Daily Papers", "발견", "hf", None),
+    ("hf_blog", "HF 블로그", "발견", "feed", "https://huggingface.co/blog/feed.xml"),
+    ("ahead_of_ai", "Ahead of AI", "해설", "feed", "https://magazine.sebastianraschka.com/feed"),
+    ("dair", "DAIR.AI", "해설", "feed", "https://nlp.elvissaravia.com/feed"),
+    ("deep_focus", "Deep (Learning) Focus", "해설", "feed", "https://cameronrwolfe.substack.com/feed"),
+    ("lilian_weng", "Lilian Weng", "해설", "feed", "https://lilianweng.github.io/index.xml"),
+    ("unsloth", "Unsloth 릴리스", "실전", "feed", "https://github.com/unslothai/unsloth/releases.atom"),
+    ("r_localllama", "r/LocalLLaMA", "실전", "reddit", "LocalLLaMA"),
+    ("r_machinelearning", "r/MachineLearning", "실전", "reddit", "MachineLearning"),
+    ("pytorchkr", "PyTorchKR", "국내", "discourse", "https://discuss.pytorch.kr"),
+    ("geeknews", "GeekNews", "국내", "pulled", "geeknews"),
+    ("arxiv_eess_as", "arXiv eess.AS", "음성", "pulled", "arxiv-eess-AS"),
+]
+ROLE = {key: role for key, _, role, _, _ in SOURCES}
+
+
+def _item(key, title, url, when, head="", score=None, comments=None, links=(), ident_=None) -> dict:
+    return {"source": key, "role": ROLE[key], "title": clean_title(title), "url": url,
+            "date": when.isoformat() if when else None, "head": re.sub(r"\s+", " ", head or "").strip()[:300],
+            "score": score, "comments": comments, "links": [x for x in _unique(links) if x and x != url],
+            "ident": ident_ or ident(url)}
+
+
+def src_hf(get, week: str) -> list[dict]:
+    out = []
+    for p in range(10):
+        page = json.loads(get(f"https://huggingface.co/api/daily_papers?week={week}&limit=100&p={p}"))
+        for x in page:
+            paper = x.get("paper") or {}
+            pid = paper.get("id") or ""
+            # ai_summary is a machine summary: never read, so it can never leak into a brief
+            out.append(_item("hf_papers", paper.get("title") or x.get("title") or "", f"https://huggingface.co/papers/{pid}",
+                             parse_date(paper.get("submittedOnDailyAt") or x.get("publishedAt")),
+                             head=paper.get("summary") or "", score=paper.get("upvotes"), comments=x.get("numComments"),
+                             links=[paper.get("githubRepo"), paper.get("projectPage")], ident_=pid))
+        if len(page) < 100:
+            break
+    return out
+
+
+def src_feed(get, key: str, url: str, start: datetime, end: datetime) -> tuple[list[dict], int]:
+    items, undated = [], 0
+    for e in feed_entries(get(url)):
+        if e["date"] is None:
+            undated += 1
+        elif start <= e["date"] < end:
+            text = html_text(e["html"])
+            items.append(_item(key, e["title"], e["link"], e["date"], head=text, links=hrefs(e["html"]) + urls_in(text)))
+    return items, undated
+
+
+def _is_reddit(url: str) -> bool:
+    host = _host(url)
+    return any(host == d or host.endswith("." + d) for d in ("reddit.com", "redd.it"))
+
+
+def src_reddit(get, key: str, sub: str, start: datetime, end: datetime) -> list[dict]:
+    """Reddit's robots.txt bars crawlers, so posts come from the arctic-shift archive, never reddit.com."""
+    after, before = int(start.timestamp()), int(end.timestamp())
+    seen, out = set(), []
+    for _ in range(20):
+        url = (f"https://arctic-shift.photon-reddit.com/api/posts/search?subreddit={sub}"
+               f"&after={after}&before={before}&limit=100&sort=desc")
+        try:
+            data = json.loads(get(url)).get("data") or []
+        except (FetchError, ValueError) as e:
+            if not out:
+                raise
+            raise Partial(out, str(e)) from None
+        for p in data:
+            if p.get("id") in seen:
+                continue
+            seen.add(p.get("id"))
+            link = p.get("url") or ""
+            external = link if link.startswith("http") and not _is_reddit(link) else None
+            body = p.get("selftext") or ""
+            # the archive keeps score and comment count at 0 or 1 until its second pass, about 36 hours later
+            fresh = bool((p.get("_meta") or {}).get("retrieved_2nd_on"))
+            out.append(_item(key, p.get("title") or "", "https://www.reddit.com" + (p.get("permalink") or ""),
+                             datetime.fromtimestamp(int(p["created_utc"]), timezone.utc), head=body,
+                             score=p.get("score") if fresh else None, comments=p.get("num_comments") if fresh else None,
+                             links=([external] if external else []) + urls_in(body),
+                             ident_=ident(external) if external else None))
+        if len(data) < 100:
+            break
+        before = min(int(p["created_utc"]) for p in data)
+    return out
+
+
+def src_discourse(get, key: str, base: str, start: datetime, end: datetime) -> list[dict]:
+    out = []
+    for n in range(20):
+        topics = (json.loads(get(f"{base}/latest.json?order=created&page={n}")).get("topic_list") or {}).get("topics") or []
+        if not topics:
+            break
+        for t in topics:
+            when = parse_date(t.get("created_at"))
+            if when and start <= when < end:
+                out.append(_item(key, t.get("title") or "", f"{base}/t/{t.get('slug')}/{t.get('id')}", when,
+                                 score=t.get("like_count"), comments=max((t.get("posts_count") or 1) - 1, 0)))
+        # pinned topics sit on page 0 whatever their age, so they must not end the paging
+        dates = [d for d in (parse_date(t.get("created_at")) for t in topics if not t.get("pinned")) if d]
+        if not dates or min(dates) < start:
+            break
+    return out
+
+
+def src_pulled(home: Path, key: str, name: str, start: datetime, end: datetime) -> list[dict]:
+    path = Path(home) / "pull" / f"{name}.jsonl"
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            e = json.loads(line)
+        except ValueError:  # a pull cut off mid-write leaves a partial last line
+            continue
+        if e.get("announce_type") in ("replace", "replace-cross"):
+            continue
+        when = parse_date(e.get("date")) or parse_date(e.get("fetched_at"))
+        if when and start <= when < end:
+            out.append(_item(key, e.get("title") or "", e.get("link") or "", when,
+                             head=e.get("content") or "", links=e.get("links") or []))
+    return out

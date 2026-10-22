@@ -57,3 +57,14 @@ class FetchTest(unittest.TestCase):
     def test_size_cap(self):
         f = self.make({"https://a.com/x": (200, b"a" * (w.MAX_BYTES + 10))})
         self.assertEqual(len(f.get("https://a.com/x")), w.MAX_BYTES)
+
+    def test_server_error_retried_then_success(self):
+        f = self.make({"https://a.com/robots.txt": ALLOW, "https://a.com/x": [(500, b""), (200, b"ok")]})
+        self.assertEqual(f.get("https://a.com/x"), b"ok")
+        self.assertEqual(self.sleeps, [2])
+
+    def test_server_error_gives_up(self):
+        f = self.make({"https://a.com/robots.txt": ALLOW, "https://a.com/x": [(503, b"")] * 4})
+        with self.assertRaisesRegex(w.FetchError, "HTTP 503"):
+            f.get("https://a.com/x")
+        self.assertEqual(self.sleeps, [2, 4, 8])
