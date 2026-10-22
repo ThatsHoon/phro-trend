@@ -91,6 +91,8 @@ class PullTest(unittest.TestCase):
         cmd = w.schedule(self.home, sys.executable, Path("C:/plug"), platform="nt")
         self.assertIn("Register-ScheduledTask", cmd)
         self.assertIn("StartWhenAvailable", cmd)
+        self.assertIn("-AllowStartIfOnBatteries", cmd)
+        self.assertIn("-DontStopIfGoingOnBatteries", cmd)
         self.assertIn("09:00", cmd)
         self.assertIn("21:00", cmd)
         self.assertIn(r"C:/plug", (self.home / "pull_launcher.py").read_text(encoding="utf-8"))

@@ -131,6 +131,19 @@ class RedditEdgeTest(unittest.TestCase):
             w.src_reddit(FakeGet(route), "r_localllama", "LocalLLaMA", START, END)
         self.assertEqual((len(cm.exception.items), cm.exception.reason), (100, "HTTP 500"))
 
+    def test_page_cap_is_reported(self):
+        end_ts, calls = int(END.timestamp()), []
+
+        def route(url):
+            calls.append(url)
+            n = len(calls)
+            return json.dumps({"data": [post(n * 1000 + i, end_ts - 60 * (100 * n + i)) for i in range(100)]}).encode()
+
+        with self.assertRaises(w.Partial) as cm:
+            w.src_reddit(FakeGet(route), "r_localllama", "LocalLLaMA", START, END)
+        self.assertEqual(len(cm.exception.items), 2000)
+        self.assertIn("20", cm.exception.reason)
+
     def test_first_page_failure_is_a_plain_fetch_error(self):
         def route(url):
             raise w.FetchError("HTTP 500")

@@ -73,6 +73,25 @@ class ReadTest(unittest.TestCase):
         self.assertIn("skip https://news.hada.io/topic?id=2", printed)
         self.assertFalse(any("news.hada.io" in c for c in self.calls))
 
+    def test_arxiv_link_reads_the_paper_not_the_cached_abstract(self):
+        row = {"title": "Speech paper", "link": "https://arxiv.org/abs/2610.14224", "content": "cached abstract"}
+        (self.home / "pull" / "arxiv-eess-AS.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+        paths, _ = self.read(["https://arxiv.org/abs/2610.14224"])
+        self.assertEqual([p.name for p in paths], ["2610.14224.md"])
+        self.assertIn("# Paper", paths[0].read_text(encoding="utf-8"))
+
+    def test_cached_abstract_is_the_last_resort_for_papers(self):
+        row = {"title": "Speech paper", "link": "https://arxiv.org/abs/2610.00002", "content": "cached abstract"}
+        (self.home / "pull" / "arxiv-eess-AS.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+        paths, _ = self.read(["https://arxiv.org/abs/2610.00002"])
+        self.assertEqual(len(paths), 1)
+        self.assertIn("cached abstract", paths[0].read_text(encoding="utf-8"))
+
+    def test_long_urls_do_not_share_a_file(self):
+        base = "https://example.com/" + "x" * 80
+        self.assertNotEqual(w._slug(base + "/one"), w._slug(base + "/two"))
+        self.assertEqual(w._slug("https://example.com/post/1"), "example-com-post-1")
+
     def test_malformed_answer_skips_only_that_url(self):
         self.routes["https://arctic-shift.photon-reddit.com/api/posts/ids?ids=zzz999"] = b"[1, 2]"
         paths, printed = self.read(["https://www.reddit.com/r/LocalLLaMA/comments/zzz999/t/", "https://example.com/post/1"])

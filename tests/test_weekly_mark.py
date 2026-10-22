@@ -37,6 +37,16 @@ class MarkTest(unittest.TestCase):
         w.mark(f, rec)
         self.assertEqual(sorted(json.loads(rec.read_text(encoding="utf-8"))), ["2026-W41", "2026-W42"])
 
+    def test_corrupt_record_is_not_overwritten(self):
+        f = self.dir / "2026-W42.html"
+        f.write_text(weekly_page(), encoding="utf-8")
+        rec = self.dir / "weekly.json"
+        broken = '{"2026-W41": {"stories": []},}'
+        rec.write_text(broken, encoding="utf-8")
+        with self.assertRaises(ValueError):
+            w.mark(f, rec)
+        self.assertEqual(rec.read_text(encoding="utf-8"), broken)
+
     def test_missing_week_meta(self):
         f = self.dir / "x.html"
         f.write_text("<html></html>", encoding="utf-8")

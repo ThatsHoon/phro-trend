@@ -14,6 +14,10 @@ class PluginTest(unittest.TestCase):
             self.assertTrue(paths, skill)
             self.assertEqual([p for p in paths if not (ROOT / p).exists()], [], skill)
 
+    def test_skill_says_where_data_id_comes_from(self):
+        text = (ROOT / "skills/weekly/SKILL.md").read_text(encoding="utf-8")
+        self.assertRegex(text, r"data-id.{0,60}items\.json")
+
     def test_constants_agree(self):
         c, w = load("scripts/check.py"), load("skills/weekly/scripts/weekly.py")
         self.assertEqual((c.STAGES, c.LABELS, c.EVIDENCE), (w.STAGES, w.LABELS, w.EVIDENCE))

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import email.utils
+import hashlib
 import html as htmllib
 import json
 import os
@@ -420,6 +421,8 @@ def src_reddit(get, key: str, sub: str, start: datetime, end: datetime) -> list[
         if len(data) < 100:
             break
         before = min(int(p["created_utc"]) for p in data)
+    else:  # twenty full pages and still more: the oldest part of the week is missing
+        raise Partial(out, "20쪽 한도에 걸려 주 앞부분이 빠짐")
     return out
 
 
@@ -572,7 +575,8 @@ def schedule(home: Path, python_exe: str, plugin_root: Path, platform: str = os.
         return "\n".join([
             f"$a = New-ScheduledTaskAction -Execute '{exe}' -Argument '-I \"{launcher}\"'",
             "$t = @((New-ScheduledTaskTrigger -Daily -At 09:00), (New-ScheduledTaskTrigger -Daily -At 21:00))",
-            "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10)",
+            "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries"
+            " -ExecutionTimeLimit (New-TimeSpan -Minutes 10)",
             "Register-ScheduledTask -TaskName 'phro-trend pull' -Action $a -Trigger $t -Settings $s -Force",
         ])
     return f"(crontab -l 2>/dev/null; echo \"0 9,21 * * * '{python_exe}' -I '{launcher}'\") | crontab -"
@@ -598,9 +602,12 @@ def merge(items: list[dict]) -> list[dict]:
     for sid, group in groups.items():
         group.sort(key=lambda x: (ORDER[x["source"]], -(x["score"] or 0)))
         lead = group[0]
+        repo = next(filter(None, (github_repo(u) for x in group for u in (x["url"], *x["links"]))), None)
         stories[sid] = {"id": sid, "title": lead["title"], "url": lead["url"], "source": lead["source"],
                         "role": lead["role"], "date": lead["date"], "head": lead["head"], "score": lead["score"],
-                        "comments": lead["comments"], "mentions": [_mention(x) for x in group[1:]],
+                        "comments": lead["comments"], "arxiv": sid if re.fullmatch(r"\d{4}\.\d{4,5}", sid) else None,
+                        "github": f"https://github.com/{repo}" if repo else None,
+                        "mentions": [_mention(x) for x in group[1:]],
                         "n_sources": 0, "covered_ai": None, "covered_weekly": None}
     for it in items:
         for link in it["links"]:
@@ -630,7 +637,9 @@ def _when(s: dict) -> datetime:
 
 
 def _row(s: dict) -> str:
-    marks = f" [ai {s['covered_ai']}]" if s["covered_ai"] else ""
+    marks = " [code]" if s.get("github") else ""
+    if s["covered_ai"]:
+        marks += f" [ai {s['covered_ai']}]"
     if s["covered_weekly"]:
         marks += f" [{s['covered_weekly'].split('-')[-1]}]"
     score = "-" if s["score"] is None else s["score"]
@@ -669,10 +678,21 @@ def listing(stories: list[dict], status: dict, week: str, start: datetime, end: 
 
 
 def _load_json(path: Path) -> dict:
+    """A missing record is empty; a broken one raises, so nothing ever writes over it by mistake."""
     try:
         return json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return {}
+    except ValueError as e:
+        raise ValueError(f"{path} 읽기 실패 ({e})") from None
+
+
+def _pull_trouble(home: Path, name: str) -> str:
+    """Why a pulled feed has no successful run in the log: never scheduled, or every run failed."""
+    failed = [r for r in _read_jsonl(Path(home) / "pull" / "log.jsonl") if r.get("feed") == name]
+    if not failed:
+        return UNSCHEDULED
+    return f"최근 쌓기 {len(failed)}회 모두 실패, 마지막 이유: {failed[-1].get('error')}"
 
 
 def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, today: date | None = None) -> int:
@@ -701,7 +721,7 @@ def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, t
                 if times:
                     st["gaps"] = [[a.isoformat(), b.isoformat()] for a, b in gaps(times, start, end)]
                 else:
-                    st["error"] = UNSCHEDULED
+                    st["error"] = _pull_trouble(home, arg)
             st["ok"] = st["error"] is None
         except Partial as e:  # keep what arrived; the status says it is only part of the week
             got, st["ok"], st["error"] = e.items, True, f"일부만 받음: {e.reason}"
@@ -711,7 +731,14 @@ def collect(week: str | None, out: Path, get=None, tz=None, home: Path = HOME, t
         items += got
         status[key] = st
     stories = merge(items)
-    mark_covered(stories, _load_json(home / "seen.json"), _load_json(home / "weekly.json"), week)
+    records = []
+    for name in ("seen.json", "weekly.json"):
+        try:
+            records.append(_load_json(home / name))
+        except ValueError as e:  # a broken record should not cost the week's collection
+            print(f"경고: {e}. 이번 목록에는 그 기록의 표시가 빠진다.")
+            records.append({})
+    mark_covered(stories, *records, week)
     payload = {"week": week, "start": start.isoformat(), "end": end.isoformat(),
                "collected_at": datetime.now(tz).isoformat(), "stories": stories}
     (out / "items.json").write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -728,7 +755,9 @@ REDDIT_THREAD = re.compile(r"reddit\.com/r/[^/]+/comments/([a-z0-9]+)", re.I)
 def _slug(url: str) -> str:
     u = urllib.parse.urlsplit(url)
     raw = _host(url) + u.path + (f"?{u.query}" if u.query else "")
-    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", raw.lower())).strip("-")[:60]
+    slug = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", raw.lower())).strip("-")
+    # a cut slug ends in a short hash of the whole address, so two long URLs never share a file
+    return slug if len(slug) <= 60 else f"{slug[:51]}-{hashlib.sha1(raw.encode()).hexdigest()[:8]}"
 
 
 def _pulled_rows(home: Path) -> dict[str, dict]:
@@ -772,14 +801,21 @@ def read(urls: list[str], out: Path, get, home: Path = HOME) -> list[Path]:
             thread = REDDIT_THREAD.search(url)
             repo = github_repo(url)
             path_parts = [x for x in urllib.parse.urlsplit(url).path.split("/") if x]
-            if row:
-                name, text = f"pulled-{_slug(url)}.txt", f"{row.get('title') or ''}\n\n{row.get('content') or ''}"
+            cached = f"{row.get('title') or ''}\n\n{row.get('content') or ''}" if row else ""
+            if arxiv_id(url):  # a paper first, even one the eess.AS pull holds: the cache has only its abstract
+                aid = arxiv_id(url)
+                try:
+                    text = _paper_text(get, aid)
+                except (FetchError, ValueError):
+                    if not row:
+                        raise
+                    text = cached
+                name = f"{aid}.md"
+            elif row:
+                name, text = f"pulled-{_slug(url)}.txt", cached
             elif _host(url) == "news.hada.io":
                 print(f"skip {url}: GeekNews 페이지는 받지 않음")
                 continue
-            elif arxiv_id(url):
-                aid = arxiv_id(url)
-                name, text = f"{aid}.md", _paper_text(get, aid)
             elif thread:
                 name, text = f"reddit-{thread.group(1)}.txt", _reddit_text(get, thread.group(1))
             elif repo and len(path_parts) == 2:

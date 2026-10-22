@@ -97,6 +97,36 @@ class CollectTest(unittest.TestCase):
         self.assertEqual(s["2610.99999"]["n_sources"], 2)
         self.assertIn(w.ident(nl["url"]), s)
 
+    def test_story_keeps_arxiv_and_code_links(self):
+        hf = item("hf_papers", "https://huggingface.co/papers/2610.14224", links=["https://github.com/Org/Repo", "https://proj.example"])
+        kr = item("pytorchkr", "https://discuss.pytorch.kr/t/x/1", links=["https://github.com/a/b/tree/main"])
+        blog = item("hf_blog", "https://huggingface.co/blog/post")
+        s = {x["id"]: x for x in w.merge([hf, kr, blog])}
+        paper, news = s["2610.14224"], s["https://discuss.pytorch.kr/t/x/1"]
+        self.assertEqual((paper["arxiv"], paper["github"]), ("2610.14224", "https://github.com/org/repo"))
+        self.assertEqual((news["arxiv"], news["github"]), (None, "https://github.com/a/b"))
+        self.assertIn("[code]", w._row(paper))
+        self.assertNotIn("[code]", w._row(s["https://huggingface.co/blog/post"]))
+
+    def test_pull_failures_are_not_called_unscheduled(self):
+        (self.home / "pull").mkdir()
+        rows = [{"at": f"2026-10-1{d}T09:00:00+09:00", "feed": "geeknews", "ok": False, "error": "요청 제한(429)"}
+                for d in (3, 4, 5)]
+        (self.home / "pull" / "log.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        self.run_collect()
+        error = self.status()["geeknews"]["error"]
+        self.assertNotEqual(error, w.UNSCHEDULED)
+        self.assertIn("3회", error)
+        self.assertIn("요청 제한(429)", error)
+        self.assertEqual(self.status()["arxiv_eess_as"]["error"], w.UNSCHEDULED)
+
+    def test_corrupt_record_warns_and_collects(self):
+        (self.home / "weekly.json").write_text("{oops", encoding="utf-8")
+        code, printed = self.run_collect()
+        self.assertEqual(code, 0)
+        self.assertIn("weekly.json", printed)
+        self.assertTrue((self.out / "items.json").exists())
+
     def test_collect_partial_failure(self):
         code, _ = self.run_collect(get=make_get(fail=("subreddit=MachineLearning",)))
         self.assertEqual(code, 0)
