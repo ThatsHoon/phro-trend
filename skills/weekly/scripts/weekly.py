@@ -14,7 +14,11 @@ from __future__ import annotations
 import email.utils
 import html as htmllib
 import re
+import time
+import urllib.error
 import urllib.parse
+import urllib.request
+import urllib.robotparser
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from html.parser import HTMLParser
@@ -200,3 +204,88 @@ def ident(url: str) -> str:
         return aid
     repo = github_repo(url)
     return f"github.com/{repo}" if repo else norm_url(url)
+
+
+MAX_BYTES = 10_000_000
+PACE = {"arctic-shift.photon-reddit.com": 0.5, "discuss.pytorch.kr": 1.0, "huggingface.co": 0.3}
+BACKOFF = (2, 4, 8)
+
+
+class FetchError(Exception):
+    """Why a source could not be read this run; written as is into the collection status."""
+
+
+class _Redirect308(urllib.request.HTTPRedirectHandler):
+    """Follow 308 on Python 3.9 and 3.10 too (they only know 301, 302, 303, 307)."""
+
+    http_error_308 = urllib.request.HTTPRedirectHandler.http_error_302
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return super().redirect_request(req, fp, 307 if code == 308 else code, msg, headers, newurl)
+
+
+def _urlopen(url: str, headers: dict) -> tuple[int, bytes]:
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.build_opener(_Redirect308).open(req, timeout=60) as r:
+            return r.status, r.read(MAX_BYTES + 1)
+    except urllib.error.HTTPError as e:
+        return e.code, b""
+
+
+class Fetcher:
+    """One polite client per run: honest User-Agent, robots.txt per host, pacing, backoff on 429/422."""
+
+    def __init__(self, opener=None, sleep=time.sleep, clock=time.monotonic):
+        self.opener = opener or _urlopen
+        self.sleep, self.clock = sleep, clock
+        self.robots: dict[str, urllib.robotparser.RobotFileParser | None] = {}
+        self.last: dict[str, float] = {}
+
+    def _robots_allow(self, url: str, headers: dict) -> bool:
+        u = urllib.parse.urlsplit(url)
+        origin = f"{u.scheme}://{u.netloc}"
+        if origin not in self.robots:
+            try:
+                status, body = self.opener(origin + "/robots.txt", headers)
+            except Exception:
+                raise FetchError("robots.txt 확인 실패") from None
+            if status == 200:
+                rp = urllib.robotparser.RobotFileParser()
+                rp.parse(body.decode("utf-8", "replace").splitlines())
+                self.robots[origin] = rp
+            elif 400 <= status < 500:
+                self.robots[origin] = None  # no robots.txt: everything allowed
+            else:
+                raise FetchError("robots.txt 확인 실패")
+        rp = self.robots[origin]
+        return rp is None or rp.can_fetch("phro-trend", url)
+
+    def _paced(self, url: str, headers: dict) -> tuple[int, bytes]:
+        host = urllib.parse.urlsplit(url).hostname or ""
+        gap = PACE.get(host, 0)
+        if gap and host in self.last:
+            wait = gap - (self.clock() - self.last[host])
+            if wait > 0:
+                self.sleep(wait)
+        try:
+            return self.opener(url, headers)
+        except Exception as e:  # any network trouble makes the source unreadable for this run
+            raise FetchError(type(e).__name__) from None
+        finally:
+            self.last[host] = self.clock()
+
+    def get(self, url: str, headers: dict | None = None) -> bytes:
+        hdrs = {"User-Agent": UA, **(headers or {})}
+        if not self._robots_allow(url, hdrs):
+            raise FetchError("robots.txt가 막음")
+        for delay in (*BACKOFF, None):
+            status, body = self._paced(url, hdrs)
+            if status in (429, 422):
+                if delay is None:
+                    raise FetchError(f"요청 제한({status})")
+                self.sleep(delay)
+                continue
+            if status >= 400:
+                raise FetchError(f"HTTP {status}")
+            return body[:MAX_BYTES]
