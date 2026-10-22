@@ -56,7 +56,10 @@ class CoreTest(unittest.TestCase):
         self.assertEqual(w.github_repo("https://github.com/org/repo.git"), "org/repo")
         self.assertIsNone(w.github_repo("https://github.com/orgs/foo"))
         self.assertEqual(w.norm_url("https://www.Example.com/a/?utm_source=x&id=3#top"), "https://example.com/a?id=3")
-        self.assertEqual(w.ident("https://github.com/Org/Repo/issues/3"), "github.com/org/repo")
+        self.assertEqual(w.ident("https://github.com/Org/Repo"), "github.com/org/repo")
+        self.assertEqual(w.ident("https://github.com/Org/Repo/tree/main/docs"), "github.com/org/repo")
+        for event in ("releases/tag/v1.2", "pull/12", "issues/3"):  # separate news, so separate stories
+            self.assertEqual(w.ident(f"https://github.com/Org/Repo/{event}"), f"https://github.com/Org/Repo/{event}")
 
     def test_clean_title_and_text(self):
         self.assertEqual(w.clean_title("New model \u2014 fast \U0001F680  release"), "New model - fast release")

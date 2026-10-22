@@ -137,7 +137,7 @@ phro-trend/
 | `mark FILE` | 검사를 통과한 결과 파일의 소식을 `weekly.json`에 남긴다. |
 | `selftest` | 11절의 시험을 돈다. |
 
-소식 하나의 모양은 `{id, title, url, source, role, date, head, score, comments, arxiv, github, mentions}`다. `id`는 arXiv ID가 있으면 그것이고, 없으면 GitHub `owner/repo`, 그것도 없으면 정규화한 URL이다. 같은 arXiv ID, 같은 저장소, 같은 URL은 한 소식으로 합치고, 다른 곳의 언급은 `mentions`에 모은다. 제목은 받을 때 이모지를 빼고 긴 대시와 중간 대시를 하이픈으로 바꾼다. `head`는 글의 앞 300자다. HF의 `ai_summary`는 받지 않는다.
+소식 하나의 모양은 `{id, title, url, source, role, date, head, score, comments, arxiv, github, mentions}`다. `id`는 arXiv ID가 있으면 그것이고, 없으면 GitHub 저장소 첫 페이지나 코드 주소(`tree`, `blob`)일 때 `owner/repo`, 그 밖에는 정규화한 URL이다. 릴리스, PR, 이슈는 저장소 안의 따로 된 소식이라 각자의 URL을 id로 둔다. 같은 arXiv ID, 같은 저장소, 같은 URL은 한 소식으로 합치고, 다른 곳의 언급은 `mentions`에 모은다. 제목은 받을 때 이모지를 빼고 긴 대시와 중간 대시를 하이픈으로 바꾼다. `head`는 글의 앞 300자다. HF의 `ai_summary`는 받지 않는다.
 
 ## 8. 문체 규칙 (STYLE.md, 두 스킬 공통)
 

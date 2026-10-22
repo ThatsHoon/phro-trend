@@ -28,7 +28,7 @@ class FetchTest(unittest.TestCase):
     def test_ua_and_robots_allow(self):
         f = self.make({"https://a.com/robots.txt": ALLOW, "https://a.com/x": (200, b"ok")})
         self.assertEqual(f.get("https://a.com/x"), b"ok")
-        self.assertEqual(f.opener.calls[-1][1]["User-Agent"], "phro-trend/0.2.0 (+https://github.com/ThatsHoon/phro-trend)")
+        self.assertEqual(f.opener.calls[-1][1]["User-Agent"], f"phro-trend/{w.VERSION} (+https://github.com/ThatsHoon/phro-trend)")
 
     def test_robots_disallow(self):
         f = self.make({"https://a.com/robots.txt": (200, b"User-agent: *\nDisallow: /\n")})

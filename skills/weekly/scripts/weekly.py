@@ -29,7 +29,7 @@ from datetime import date, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 UA = f"phro-trend/{VERSION} (+https://github.com/ThatsHoon/phro-trend)"
 HOME = Path.home() / ".claude" / "phro-trend"
 STAGES = ["모델 공개", "데이터", "학습", "평가", "경량화·추론", "응용"]
@@ -208,7 +208,11 @@ def ident(url: str) -> str:
     if aid:
         return aid
     repo = github_repo(url)
-    return f"github.com/{repo}" if repo else norm_url(url)
+    parts = [x for x in urllib.parse.urlsplit(url).path.split("/") if x]
+    # the repo page and its code are one story; a release, PR or issue is news of its own
+    if repo and (len(parts) == 2 or parts[2] in ("tree", "blob")):
+        return f"github.com/{repo}"
+    return norm_url(url)
 
 
 MAX_BYTES = 10_000_000
