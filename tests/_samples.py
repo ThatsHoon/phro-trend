@@ -7,14 +7,14 @@ SLOTS = ["무엇이 달라졌나", "어디까지 믿나", "적용 고리", "해�
 
 
 def weekly_page(slots=None, label="시험해 볼 것", themes=2, list_outside=False, flow_repeat=2, story_link=True,
-                drop_item_label=False):
+                drop_item_label=False, n_stories=3):
     stories = []
-    for i in range(1, 4):
+    for i in range(1, n_stories + 1):
         link = f' <a href="https://huggingface.co/papers/2610.0000{i}">논문 페이지</a>' if story_link else ""
         cells = "".join(f"<h4>{s}</h4>\n<p>{KO * 3}{link if n == 3 else ''}</p>\n" for n, s in enumerate(slots or SLOTS))
         stories.append(
             f'<article class="story" id="s{i}" data-id="2610.0000{i}" data-stage="학습" data-label="{label}">\n'
-            f'<h3>{"①②③"[i - 1]} 결과 문장 {i}</h3>\n'
+            f'<h3>{"①②③④⑤⑥⑦⑧⑨⑩⑪"[i - 1]} 결과 문장 {i}</h3>\n'
             f'<p class="signal"><span class="label">{label}</span> 코드 공개 · 2곳에서 화제</p>\n'
             f'<p class="orig">Original title {i} · HF Daily Papers</p>\n{cells}</article>')
     blocks = []

@@ -38,7 +38,8 @@ EVIDENCE = ["논문 주장", "코드 공개", "재현 후기 있음"]
 SLOTS = ["무엇이 달라졌나", "어디까지 믿나", "적용 고리", "해보려면"]
 WEEKLY_PARTS = ['<section id="glance"', '<section id="top"', '<section id="brief"',
                 '<section id="flow"', '<section id="try"', '<details id="appendix"']
-MAX_BODY = 5000  # 본문 글자 수(공백 제외) 상한: 분당 500자로 10분
+BODY_BASE, BODY_PER_STORY = 2000, 1000  # 본문 글자 수(공백 제외) 상한: 핵심 3건이면 5천 자
+MAX_STORIES = MAX_PAPERS = 10
 
 
 def kind_of(html):
@@ -110,8 +111,8 @@ def check_style(html):
 def check_ai(html):
     bad = []
     papers = re.findall(r'<section class="paper".*?</section>', html, flags=re.S)
-    if len(papers) != 3:
-        bad.append(f"paper sections: {len(papers)} (want 3)")
+    if not 1 <= len(papers) <= MAX_PAPERS:
+        bad.append(f"paper sections: {len(papers)} (want 1~{MAX_PAPERS})")
     for i, sec in enumerate(papers, 1):
         missing = [s for s in SECTIONS if not re.search(rf"<h3[^>]*>\s*{re.escape(s)}", sec)]
         if missing:
@@ -155,8 +156,8 @@ def check_weekly(html):
     if glance.count('class="mermaid"') != 1:
         bad.append("glance: needs exactly one mermaid map")
     stories = re.findall(r'<article class="story"([^>]*)>(.*?)</article>', _section(html, "top"), flags=re.S)
-    if not 1 <= len(stories) <= 3:
-        bad.append(f"story count: {len(stories)} (want 1~3)")
+    if not 1 <= len(stories) <= MAX_STORIES:
+        bad.append(f"story count: {len(stories)} (want 1~{MAX_STORIES})")
     for i, (attrs, body) in enumerate(stories, 1):
         a = _attrs(attrs)
         if not a.get("data-id"):
@@ -200,8 +201,9 @@ def check_weekly(html):
     if re.search(r"<[uo]l[\s>]", re.sub(r'<details id="appendix".*?</details>', "", html, flags=re.S)):
         bad.append("list outside appendix: write prose")
     n = _nonspace(style_text(html))
-    if n > MAX_BODY:
-        bad.append(f"body: 본문 {n}자, {MAX_BODY}자 안으로 줄인다")
+    cap = BODY_BASE + BODY_PER_STORY * len(stories)
+    if n > cap:
+        bad.append(f"body: 본문 {n}자, {cap}자 안으로 줄인다")
     return bad
 
 

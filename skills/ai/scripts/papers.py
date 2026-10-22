@@ -1,6 +1,6 @@
 """HF trending papers: pick unseen ones, download text, mark as covered.
 
-  python papers.py pick --out WORKDIR [--n 3] [--seen PATH]
+  python papers.py pick --out WORKDIR [--n 10] [--seen PATH]
   python papers.py mark ID [ID ...] [--seen PATH]
 
 Reads are public; no HF token needed.
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")  # Windows console default is cp949
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    a = sub.add_parser("pick"); a.add_argument("--out", required=True); a.add_argument("--n", type=int, default=3)
+    a = sub.add_parser("pick"); a.add_argument("--out", required=True); a.add_argument("--n", type=int, default=10)
     b = sub.add_parser("mark"); b.add_argument("ids", nargs="+")
     for s in (a, b):
         s.add_argument("--seen", default=str(DEFAULT_SEEN))

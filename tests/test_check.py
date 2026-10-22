@@ -10,10 +10,10 @@ def page(body):
     return f"<html><body>{body}</body></html>"
 
 
-def ai_page(drop=None):
+def ai_page(drop=None, n=3):
     secs = "".join(f"<h3>{s}</h3><p>{LONG * 2}</p>" for s in check.SECTIONS if s != drop)
     paper = f'<section class="paper">{secs}<pre class="mermaid">flowchart LR</pre><table></table></section>'
-    return "<html><body>" + paper * 3 + "</body></html>"
+    return "<html><body>" + paper * n + "</body></html>"
 
 
 class KindTest(unittest.TestCase):
@@ -28,6 +28,11 @@ class KindTest(unittest.TestCase):
 
     def test_ai_missing_section_fails(self):
         self.assertTrue(any("missing" in m for m in check.check(ai_page(drop="예시"))))
+
+
+    def test_ai_paper_range(self):
+        self.assertEqual(check.check_ai(ai_page(n=10)), [])
+        self.assertTrue(any("paper sections" in m for m in check.check_ai(ai_page(n=11))))
 
 
 class StyleTest(unittest.TestCase):
@@ -82,6 +87,12 @@ class StyleTest(unittest.TestCase):
 class WeeklyTest(unittest.TestCase):
     def test_good_page_passes(self):
         self.assertEqual(check.check(weekly_page()), [])
+
+    def test_weekly_story_range(self):
+        ten = weekly_page(n_stories=10)
+        self.assertGreater(check._nonspace(check.style_text(ten)), 5000)  # passes only because the cap scales
+        self.assertEqual(check.check(ten), [])
+        self.assertTrue(any("story count" in m for m in check.check(weekly_page(n_stories=11))))
 
     def test_template_has_kind_and_slots(self):
         t = (ROOT / "skills/weekly/assets/template.html").read_text(encoding="utf-8")
