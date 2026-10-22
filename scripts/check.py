@@ -31,6 +31,14 @@ PER_DOC = {  # 이름: (정규식, 문서당 최대 횟수)
 OPENERS = ["또한", "특히", "이처럼", "따라서", "즉"]  # 같은 말로 시작하는 문장은 문서당 3개까지
 MAX_BOLD = 3  # <p class="item"> 머리말 밖의 <strong>, <b>
 
+# weekly pages (must match skills/weekly/scripts/weekly.py)
+STAGES = ["모델 공개", "데이터", "학습", "평가", "경량화·추론", "응용"]
+LABELS = ["바로 써 볼 것", "시험해 볼 것", "지켜볼 것"]
+EVIDENCE = ["논문 주장", "코드 공개", "재현 후기 있음"]
+SLOTS = ["무엇이 달라졌나", "어디까지 믿나", "적용 고리", "해보려면"]
+WEEKLY_PARTS = ['<section id="glance"', '<section id="top"', '<section id="brief"',
+                '<section id="flow"', '<section id="try"', '<details id="appendix"']
+
 
 def kind_of(html):
     m = re.search(r'<meta\s+name="phro-kind"\s+content="([a-z]+)"', html)
@@ -38,7 +46,7 @@ def kind_of(html):
 
 
 def check(html):
-    structure = check_ai(html) if kind_of(html) == "ai" else ["weekly: structure check not implemented"]
+    structure = check_ai(html) if kind_of(html) == "ai" else check_weekly(html)
     return check_style(html) + structure
 
 
@@ -120,6 +128,85 @@ def check_ai(html):
         short = [x for x in paras if len(x.strip()) < 80]
         if paras and len(short) > len(paras) / 3:
             bad.append(f"paper {i}: {len(short)}/{len(paras)} paragraphs under 80 chars, join them into prose")
+    return bad
+
+
+def _plain(s):
+    return re.sub(r"\s+", " ", htmllib.unescape(re.sub(r"<[^>]+>", " ", s or ""))).strip()
+
+
+def _section(html, sid):
+    m = re.search(rf'<section id="{sid}"[^>]*>(.*?)</section>', html, flags=re.S)
+    return m.group(1) if m else ""
+
+
+def _attrs(s):
+    return dict(re.findall(r'(data-[a-z]+)="([^"]*)"', s))
+
+
+def check_weekly(html):
+    pos = [html.find(x) for x in WEEKLY_PARTS]
+    if -1 in pos or pos != sorted(pos):
+        missing = [x.split('"')[1] for x, p in zip(WEEKLY_PARTS, pos) if p == -1]
+        return [f"sections: missing {missing}" if missing else "sections: out of order"]
+    bad = []
+    glance = _section(html, "glance")
+    lines = [_plain(b) for a, b in re.findall(r"<p(\s[^>]*)?>(.*?)</p>", glance, flags=re.S) if "legend" not in a]
+    if not 1 <= len([x for x in lines if x]) <= 3:
+        bad.append(f"glance: {len(lines)} sentences (want 1~3)")
+    if glance.count('class="mermaid"') != 1:
+        bad.append("glance: needs exactly one mermaid map")
+    stories = re.findall(r'<article class="story"([^>]*)>(.*?)</article>', _section(html, "top"), flags=re.S)
+    if not 1 <= len(stories) <= 3:
+        bad.append(f"story count: {len(stories)} (want 1~3)")
+    for i, (attrs, body) in enumerate(stories, 1):
+        a = _attrs(attrs)
+        if not a.get("data-id"):
+            bad.append(f"story {i}: empty data-id")
+        if a.get("data-stage") not in STAGES:
+            bad.append(f"story {i}: data-stage {a.get('data-stage')!r} not in {STAGES}")
+        label = a.get("data-label")
+        if label not in LABELS:
+            bad.append(f"story {i}: data-label {label!r} not in {LABELS}")
+        sig = re.search(r'<p class="signal"[^>]*>(.*?)</p>', body, flags=re.S)
+        sig_text = _plain(sig.group(1)) if sig else ""
+        if not label or label not in sig_text or not any(e in sig_text for e in EVIDENCE):
+            bad.append(f"story {i}: signal line needs the label and one of {EVIDENCE}")
+        slots = [_plain(x) for x in re.findall(r"<h4[^>]*>(.*?)</h4>", body, flags=re.S)]
+        if slots != SLOTS:
+            bad.append(f"story {i}: slots {slots} (want {SLOTS})")
+        if 'href="http' not in body:
+            bad.append(f"story {i}: no link")
+        paras = [_plain(x) for x in re.findall(r"<p>(.*?)</p>", body, flags=re.S)]
+        short = [x for x in paras if len(x) < 80]
+        if paras and len(short) > len(paras) / 3:
+            bad.append(f"story {i}: {len(short)}/{len(paras)} paragraphs under 80 chars, write prose")
+    themes = re.findall(r'<div class="theme"[^>]*>(.*?)</div>', _section(html, "brief"), flags=re.S)
+    if not 1 <= len(themes) <= 4:
+        bad.append(f"brief: {len(themes)} themes (want 1~4)")
+    for j, theme in enumerate(themes, 1):
+        head = re.search(r"<h3[^>]*>(.*?)</h3>", theme, flags=re.S)
+        if not head or _plain(head.group(1)) not in STAGES:
+            bad.append(f"brief theme {j}: heading must be one of {STAGES}")
+        items = re.findall(r'<p class="item"([^>]*)>(.*?)</p>', theme, flags=re.S)
+        if not 1 <= len(items) <= 4:
+            bad.append(f"brief theme {j}: {len(items)} items (want 1~4)")
+        for k, (attrs, body) in enumerate(items, 1):
+            a = _attrs(attrs)
+            if not a.get("data-id") or a.get("data-stage") not in STAGES or a.get("data-label") not in LABELS \
+                    or 'href="http' not in body:
+                bad.append(f"brief theme {j} item {k}: needs data-id, data-stage, data-label and a link")
+    for sid in ("flow", "try"):
+        if not any(_plain(x) for x in re.findall(r"<p(?:\s[^>]*)?>(.*?)</p>", _section(html, sid), flags=re.S)):
+            bad.append(f"{sid}: empty")
+    if re.search(r"<[uo]l[\s>]", re.sub(r'<details id="appendix".*?</details>', "", html, flags=re.S)):
+        bad.append("list outside appendix: write prose")
+    meta = re.search(r'<p class="meta"[^>]*>(.*?)</p>', html, flags=re.S)
+    said = re.search(r"읽는 데 약 (\d+)분", _plain(meta.group(1))) if meta else None
+    if not said:
+        bad.append("reading time: header needs 읽는 데 약 N분")
+    elif abs(int(said.group(1)) - reading_minutes(html)) > 1:
+        bad.append(f"reading time: header says {said.group(1)}분, the text reads in about {reading_minutes(html)}분")
     return bad
 
 

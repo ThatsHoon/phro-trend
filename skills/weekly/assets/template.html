@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="phro-kind" content="weekly">
+<meta name="phro-week" content="YYYY-Www">
+<title>주간 AI 소식 YYYY-Www</title>
+<style>
+:root { --bg:#fff; --fg:#1d1d1f; --muted:#6b6b70; --line:#e3e3e8; --card:#f6f6f8; --accent:#2f6fde; --old:#b5452f; --new:#1f8a4c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#16171a; --fg:#ececf0; --muted:#9a9aa3; --line:#2c2d33; --card:#1f2024; --accent:#7aa7ff; --old:#ff8a73; --new:#5fd08f; } }
+:root[data-theme="dark"] { --bg:#16171a; --fg:#ececf0; --muted:#9a9aa3; --line:#2c2d33; --card:#1f2024; --accent:#7aa7ff; --old:#ff8a73; --new:#5fd08f; }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.75 "Pretendard","Malgun Gothic",system-ui,sans-serif; }
+main { max-width:860px; margin:0 auto; padding:32px 16px 80px; }
+h1 { font-size:1.7rem; margin:0 0 4px; }
+h2 { font-size:1.3rem; margin:52px 0 8px; border-top:2px solid var(--line); padding-top:24px; }
+h3 { font-size:1.1rem; margin:30px 0 4px; }
+h4 { font-size:.98rem; margin:18px 0 4px; color:var(--accent); }
+a { color:var(--accent); }
+.meta, .muted { color:var(--muted); font-size:.9rem; }
+#glance > p:not(.legend) { font-size:1.05rem; margin:8px 0; }
+.signal { margin:4px 0; font-size:.92rem; }
+.label { display:inline-block; padding:0 9px; border:1px solid var(--line); border-radius:999px; background:var(--card); font-size:.82rem; font-weight:600; }
+.orig { color:var(--muted); font-size:.85rem; margin:2px 0 8px; }
+.theme h3 { color:var(--accent); font-size:1rem; margin-top:24px; }
+.item { margin:10px 0; }
+.mermaid { background:var(--card); border-radius:8px; padding:12px; margin:12px 0; overflow-x:auto; }
+details { margin-top:52px; border-top:2px solid var(--line); padding-top:16px; }
+summary { cursor:pointer; font-weight:600; }
+table { width:100%; border-collapse:collapse; font-size:.9rem; margin:8px 0; }
+th, td { border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+th { background:var(--card); }
+</style>
+</head>
+<body>
+<main>
+<h1>YYYY년 NN주차 AI 소식</h1>
+<p class="meta">MM.DD~MM.DD · 읽는 데 약 N분 · 훑은 글 N개 중 M개 · 소스 K곳</p>
+
+<section id="glance">
+<h2>이번 주 한눈에</h2>
+<p><a href="#s1"></a></p>
+<p><a href="#s2"></a></p>
+<p><a href="#s3"></a></p>
+<pre class="mermaid">
+flowchart LR
+  M["모델 공개"] --> T["학습"]
+  D["데이터"] --> T
+  T --> E["평가"] --> Q["경량화·추론"] --> A["응용"]
+  classDef hot fill:#d6f5e0,stroke:#1f8a4c,stroke-width:2px
+</pre>
+<p class="legend muted">바로 써 볼 것은 지금 구조에 넣어 볼 만한 것, 시험해 볼 것은 작은 실험으로 확인할 것, 지켜볼 것은 아직 이르지만 알아 둘 흐름이다.</p>
+</section>
+
+<section id="top">
+<h2>이번 주 3가지</h2>
+<article class="story" id="s1" data-id="" data-stage="" data-label="">
+<h3>① </h3>
+<p class="signal"><span class="label"></span> </p>
+<p class="orig"></p>
+<h4>무엇이 달라졌나</h4>
+<p></p>
+<h4>어디까지 믿나</h4>
+<p></p>
+<h4>적용 고리</h4>
+<p></p>
+<h4>해보려면</h4>
+<p></p>
+</article>
+</section>
+
+<section id="brief">
+<h2>짧게 보는 소식</h2>
+<div class="theme">
+<h3></h3>
+<p class="item" data-id="" data-stage="" data-label=""><strong></strong> <span class="label"></span> <a href=""></a></p>
+</div>
+</section>
+
+<section id="flow">
+<h2>흐름</h2>
+<p></p>
+</section>
+
+<section id="try">
+<h2>이번 주 해볼 것 하나</h2>
+<p></p>
+</section>
+
+<details id="appendix">
+<summary>고르지 않은 글 전체와 수집 현황</summary>
+<h3>소스별 글</h3>
+<h4></h4>
+<ul>
+<li><a href=""></a></li>
+</ul>
+<h3>수집 현황</h3>
+<table>
+<tr><th>소스</th><th>받은 글</th><th>상태</th></tr>
+</table>
+</details>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({ startOnLoad: true, theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default" });
+</script>
+</body>
+</html>

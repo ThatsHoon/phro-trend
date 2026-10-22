@@ -1,9 +1,9 @@
-import unittest
+import re, unittest
 from tests._load import ROOT, load
+from tests._samples import KO, weekly_page
 
 check = load("scripts/check.py")
 LONG = "기존 방식은 질문마다 문서를 통째로 넣었고 이 논문은 필요한 쪽만 골라 넣어서 입력 길이를 크게 줄였다. "
-KO = "이 방법은 긴 문서를 다룰 때 필요한 쪽만 골라 넣어서 같은 GPU에서 더 긴 입력을 처리한다. "
 
 
 def page(body):
@@ -74,3 +74,26 @@ class StyleTest(unittest.TestCase):
 
     def test_head_is_not_prose(self):
         self.assertNotIn("TITLE", check.style_text("<html><head><title>TITLE</title></head><body><p>x</p></body></html>"))
+
+
+class WeeklyTest(unittest.TestCase):
+    def test_good_page_passes(self):
+        self.assertEqual(check.check(weekly_page()), [])
+
+    def test_template_has_kind_and_slots(self):
+        t = (ROOT / "skills/weekly/assets/template.html").read_text(encoding="utf-8")
+        self.assertEqual(check.kind_of(t), "weekly")
+        self.assertEqual(re.findall(r"<h4>(.*?)</h4>", t)[:4], check.SLOTS)
+
+    def test_failures(self):
+        cases = [
+            ("story 1", weekly_page(slots=["무엇이 달라졌나", "적용 고리", "어디까지 믿나", "해보려면"])),
+            ("story 1", weekly_page(label="해볼 만함")),
+            ("story 1", weekly_page(story_link=False)),
+            ("brief", weekly_page(themes=5)),
+            ("brief", weekly_page(drop_item_label=True)),
+            ("list outside appendix", weekly_page(list_outside=True)),
+            ("reading time", weekly_page(minutes_off=3)),
+        ]
+        for want, page in cases:
+            self.assertTrue(any(m.startswith(want) for m in check.check(page)), want)
